@@ -1,0 +1,203 @@
+import type { Bot } from "mineflayer";
+import { Vec3 } from "vec3";
+import type {
+  InventoryEntry,
+  PerceptionSnapshot,
+  VisibleBlock,
+  VisibleEntity
+} from "./types.js";
+
+export class Perception {
+  private lastSnapshot?: PerceptionSnapshot;
+
+  constructor(
+    private readonly bot: Bot,
+    private readonly maxDistance: number
+  ) {}
+
+  observe(): PerceptionSnapshot {
+    if (!this.bot.entity) throw new Error("The bot has not spawned");
+
+    const snapshot: PerceptionSnapshot = {
+      observedAt: new Date().toISOString(),
+      position: roundPosition(this.bot.entity.position),
+      yawDegrees: round((this.bot.entity.yaw * 180) / Math.PI),
+      pitchDegrees: round((this.bot.entity.pitch * 180) / Math.PI),
+      dimension: String(this.bot.game.dimension ?? "unknown"),
+      health: this.bot.health,
+      food: this.bot.food,
+      oxygen: this.bot.oxygenLevel,
+      isRaining: this.bot.isRaining,
+      timeOfDay: this.bot.time.timeOfDay,
+      inventory: inventorySnapshot(this.bot),
+      emptyInventorySlots: this.bot.inventory.emptySlotCount(),
+      visibleBlocks: this.sampleVisibleBlocks(),
+      visibleEntities: this.visibleEntities()
+    };
+    this.lastSnapshot = snapshot;
+    return snapshot;
+  }
+
+  last(): PerceptionSnapshot | undefined {
+    return this.lastSnapshot;
+  }
+
+  isBlockCurrentlyVisible(x: number, y: number, z: number): boolean {
+    return (
+      this.lastSnapshot?.visibleBlocks.some(
+        (block) => block.x === x && block.y === y && block.z === z
+      ) ?? false
+    );
+  }
+
+  visibleEntity(id: number): VisibleEntity | undefined {
+    return this.lastSnapshot?.visibleEntities.find((entity) => entity.id === id);
+  }
+
+  inspectVisibleBlock(x: number, y: number, z: number): VisibleBlock | undefined {
+    const position = new Vec3(x, y, z);
+    const origin = this.bot.entity.position.offset(0, this.bot.entity.height, 0);
+    if (origin.distanceTo(position) > this.maxDistance) return undefined;
+
+    const block = this.bot.blockAt(position);
+    if (!block || block.name === "air" || !this.bot.canSeeBlock(block)) {
+      return undefined;
+    }
+
+    const visible = {
+      name: block.name,
+      x: block.position.x,
+      y: block.position.y,
+      z: block.position.z,
+      distance: round(origin.distanceTo(block.position))
+    };
+    if (this.lastSnapshot) {
+      this.lastSnapshot.visibleBlocks = [
+        ...this.lastSnapshot.visibleBlocks.filter(
+          (candidate) =>
+            candidate.x !== visible.x ||
+            candidate.y !== visible.y ||
+            candidate.z !== visible.z
+        ),
+        visible
+      ].sort((a, b) => a.distance - b.distance);
+    }
+    return visible;
+  }
+
+  private sampleVisibleBlocks(): VisibleBlock[] {
+    const origin = this.bot.entity.position.offset(0, this.bot.entity.height, 0);
+    const seen = new Map<string, VisibleBlock>();
+    const horizontalRays = 32;
+    const verticalAngles = [-65, -45, -30, -15, 0, 15, 30, 45, 65];
+
+    for (let horizontal = 0; horizontal < horizontalRays; horizontal += 1) {
+      const yaw = (horizontal / horizontalRays) * Math.PI * 2;
+      for (const pitchDegrees of verticalAngles) {
+        const pitch = (pitchDegrees * Math.PI) / 180;
+        const direction = new Vec3(
+          -Math.sin(yaw) * Math.cos(pitch),
+          -Math.sin(pitch),
+          -Math.cos(yaw) * Math.cos(pitch)
+        );
+        const hit = this.bot.world.raycast(origin, direction, this.maxDistance);
+        if (!hit) continue;
+        const block = resolveRaycastBlock(this.bot, hit);
+        if (!block) continue;
+        const position = block.position;
+        const key = `${position.x},${position.y},${position.z}`;
+        seen.set(key, {
+          name: block.name,
+          x: position.x,
+          y: position.y,
+          z: position.z,
+          distance: round(origin.distanceTo(position))
+        });
+      }
+    }
+
+    return [...seen.values()].sort((a, b) => a.distance - b.distance);
+  }
+
+  private visibleEntities(): VisibleEntity[] {
+    const origin = this.bot.entity.position;
+    return Object.values(this.bot.entities)
+      .filter((entity) => entity.id !== this.bot.entity.id)
+      .filter((entity) => origin.distanceTo(entity.position) <= this.maxDistance)
+      .filter((entity) => this.hasLineOfSightToEntity(entity))
+      .map((entity) => ({
+        id: entity.id,
+        name: entity.name ?? entity.displayName ?? entity.type ?? "unknown",
+        kind: entity.type ?? "unknown",
+        username: entity.username,
+        ...roundPosition(entity.position),
+        distance: round(origin.distanceTo(entity.position))
+      }))
+      .sort((a, b) => a.distance - b.distance);
+  }
+
+  private hasLineOfSightToEntity(entity: {
+    position: Vec3;
+    height?: number;
+  }): boolean {
+    const origin = this.bot.entity.position.offset(0, this.bot.entity.height, 0);
+    const target = entity.position.offset(0, (entity.height ?? 1.6) / 2, 0);
+    const direction = target.minus(origin);
+    const distance = direction.norm();
+    if (distance === 0) return true;
+    const hit = this.bot.world.raycast(origin, direction.scaled(1 / distance), distance);
+    return hit === null || origin.distanceTo(hit.intersect) >= distance - 0.2;
+  }
+}
+
+export function resolveRaycastBlock(
+  bot: Pick<Bot, "blockAt">,
+  hit: unknown
+): { name: string; position: Vec3 } | undefined {
+  const value = hit as {
+    name?: unknown;
+    position?: unknown;
+    x?: unknown;
+    y?: unknown;
+    z?: unknown;
+  };
+
+  // prismarine-world currently returns a full Block at runtime even though its
+  // declaration describes a coordinate-only RaycastResult.
+  if (
+    typeof value.name === "string" &&
+    value.position instanceof Vec3
+  ) {
+    return { name: value.name, position: value.position };
+  }
+
+  if (
+    typeof value.x !== "number" ||
+    typeof value.y !== "number" ||
+    typeof value.z !== "number"
+  ) {
+    return undefined;
+  }
+  const position = new Vec3(value.x, value.y, value.z);
+  const block = bot.blockAt(position);
+  return block ? { name: block.name, position: block.position } : undefined;
+}
+
+function inventorySnapshot(bot: Bot): InventoryEntry[] {
+  return bot.inventory
+    .items()
+    .map((item) => ({ name: item.name, count: item.count, slot: item.slot }))
+    .sort((a, b) => a.slot - b.slot);
+}
+
+function roundPosition(position: Vec3): { x: number; y: number; z: number } {
+  return {
+    x: round(position.x),
+    y: round(position.y),
+    z: round(position.z)
+  };
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}

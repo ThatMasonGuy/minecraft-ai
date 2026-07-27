@@ -1,0 +1,42 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: "PAPER"
+      VERSION: "1.21.4"
+      ONLINE_MODE: "TRUE"
+      MODE: "survival"
+      DIFFICULTY: "normal"
+      MEMORY: "2G"
+      MOTD: "Minecraft AI private test world"
+    volumes:
+      - ./local-server:/data
+
+  agent:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      minecraft:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MC_HOST: minecraft
+      MC_PORT: "25565"
+      MC_VERSION: "1.21.4"
+      VIEWER_ENABLED: "true"
+      VIEWER_PORT: "3007"
+      VIEWER_DISTANCE: "3"
+      VIEWER_MAX_FPS: "30"
+      VIEWER_MAX_PIXEL_RATIO: "1.25"
+    ports:
+      - "3007:3007"
+    volumes:
+      - ./data:/app/data
+    init: true

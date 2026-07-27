@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111713" />
+    <title>Minecraft AI — Player View</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body>
+    <main id="viewer" aria-label="Minecraft AI first-person view">
+      <div id="world-lighting" class="world-lighting" aria-hidden="true"></div>
+      <section class="agent-card" aria-live="polite">
+        <div class="eyebrow">
+          <span id="activity-dot" class="activity-dot"></span>
+          <span id="activity-phase">Connecting</span>
+        </div>
+        <h1 id="goal-title">Waiting for the agent</h1>
+        <p id="goal-rationale" class="goal-rationale">
+          Connecting to the Minecraft world…
+        </p>
+        <div class="activity-row">
+          <span class="label">Now</span>
+          <span id="activity-label">Connecting</span>
+        </div>
+        <p id="activity-detail" class="activity-detail"></p>
+        <div id="work-progress" class="work-progress" hidden>
+          <div class="progress-copy">
+            <span id="work-label">Background work</span>
+            <span id="work-count"></span>
+          </div>
+          <div class="progress-track">
+            <span id="work-fill"></span>
+          </div>
+        </div>
+      </section>
+
+      <div class="world-meta" aria-label="Player location">
+        <span id="world-state" class="world-state">
+          <span class="world-dot"></span>
+          World live
+        </span>
+        <span class="separator">·</span>
+        <span id="player-name">Offline</span>
+        <span class="separator">·</span>
+        <span id="position">—</span>
+        <span class="separator">·</span>
+        <span id="dimension">—</span>
+        <button id="inventory-button" class="inventory-button" type="button">
+          Inventory
+          <span id="inventory-count" class="inventory-count">0</span>
+        </button>
+      </div>
+
+      <div class="crosshair" aria-hidden="true"></div>
+
+      <section class="player-hud" aria-label="Player status">
+        <div class="experience">
+          <span id="experience-fill"></span>
+          <strong id="experience-level"></strong>
+        </div>
+        <div class="vitals">
+          <div id="health" class="meter health" aria-label="Health"></div>
+          <div id="food" class="meter food" aria-label="Food"></div>
+        </div>
+        <div id="hotbar" class="hotbar" aria-label="Hotbar"></div>
+        <div id="oxygen" class="oxygen" aria-label="Oxygen" hidden></div>
+      </section>
+
+      <div id="connection-warning" class="connection-warning" hidden>
+        Viewer data unavailable — reconnecting…
+      </div>
+
+      <dialog id="inventory-dialog" class="inventory-dialog">
+        <div class="inventory-heading">
+          <div>
+            <span class="inventory-kicker">Mineflayer state</span>
+            <h2>Player inventory</h2>
+          </div>
+          <button
+            id="inventory-close"
+            class="inventory-close"
+            type="button"
+            aria-label="Close inventory"
+          >
+            ×
+          </button>
+        </div>
+        <div class="inventory-layout">
+          <section class="equipment-section">
+            <h3>Equipment</h3>
+            <div id="inventory-equipment" class="equipment-grid"></div>
+          </section>
+          <section class="storage-section">
+            <h3>Storage</h3>
+            <div id="inventory-main" class="inventory-grid"></div>
+            <h3 class="hotbar-heading">Hotbar</h3>
+            <div id="inventory-hotbar" class="inventory-grid"></div>
+          </section>
+          <div class="inventory-summary">
+            <strong id="inventory-total">0 items</strong>
+            <span id="inventory-slots">0 occupied slots</span>
+          </div>
+        </div>
+      </dialog>
+    </main>
+
+    <script src="/viewer-config.js"></script>
+    <script>
+      (() => {
+        const config = window.minecraftAiViewerConfig || {};
+        const nativeRaf = window.requestAnimationFrame.bind(window);
+        const maxFps = config.maxFps || 30;
+        const frameInterval = 1000 / maxFps;
+        let lastFrame = 0;
+        window.requestAnimationFrame = (callback) =>
+          nativeRaf((time) => {
+            if (time - lastFrame >= frameInterval) {
+              lastFrame = time;
+              callback(time);
+            } else {
+              window.requestAnimationFrame(callback);
+            }
+          });
+
+        const nativeRatio = window.devicePixelRatio || 1;
+        try {
+          Object.defineProperty(window, "devicePixelRatio", {
+            configurable: true,
+            get: () => Math.min(nativeRatio, config.maxPixelRatio || 1.25)
+          });
+        } catch {
+          // The renderer remains functional if a browser does not allow this override.
+        }
+      })();
+    </script>
+    <script src="/generated/index.js"></script>
+    <script src="/dashboard.js"></script>
+  </body>
+</html>
