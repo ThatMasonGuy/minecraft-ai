@@ -208,6 +208,16 @@ export function generatedMiningProgressionProject(
         }
       },
       {
+        id: "craft_wood_sword",
+        title: "Crafting an immediate defence weapon",
+        spec: {
+          kind: "craft_item",
+          itemName: "wooden_sword",
+          targetCount: 1,
+          craftingTableAt: tableAt
+        }
+      },
+      {
         id: "craft_wood_pickaxe",
         title: "Crafting the first pickaxe",
         spec: {

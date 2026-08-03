@@ -24,11 +24,13 @@ This is deliberately an embodied agent, not a server plugin:
 - Append-only episodic events, full observation payloads, FTS5 text recall, and spatial recall
 - Remembered public chat and whispers
 - First-person ray-sampled block perception and line-of-sight entity perception
-- Walking, looking, visible-block mining, visible-reference placement, equipping, eating, crafting, sleeping, approaching visible entities, deterministic hostile-mob self-defence, chatting, and waiting
+- Walking, looking, visible-block mining, visible-reference placement, equipping, eating, crafting, sleeping, approaching visible entities, enclosed deterministic combat and escape handling, chatting, and waiting
 - Optional OpenAI-hosted web search for recipes, mechanics, strategies, and build ideas
 - Docker restart policy and persistent auth/memory volume
 
-Player combat and stealing are intentionally absent from the action surface. Both the defensive attack tool and automatic self-defence reject every player target. When a non-player entity damages the bot, the deterministic defender can equip a carried melee weapon, pursue only within a short radius, fight until the immediate threat passes, and then return control to ordinary work without requiring a model call. Movement pathfinding is also configured not to dig or pillar implicitly; destructive block changes must use explicit, perception-gated actions.
+Player combat and stealing are intentionally absent from the action surface and cannot be enabled by configuration. The combat system never attacks a player; if the same player hits the bot twice within 30 seconds, it preempts ordinary work and delegates an eighteen-block escape to the shared movement system.
+
+Hostile-mob combat is an enclosed deterministic subsystem. It owns threat assessment, equipment, tick-aligned weapon cooldowns, pursuit, strike spacing, shield use, escape decisions, recovery, loot collection, and bounded encounter-level telemetry. It refuses voluntary unarmed combat, explosive threats, uncontrolled groups, and unshielded ranged engagements. All routing—including follow, approach, hold, and multi-threat escape—is requested through the shared movement interface, so movement improvements apply to combat without a second evasion implementation. Movement pathfinding does not dig or pillar implicitly; destructive block changes remain explicit and perception-gated.
 
 ## Configure
 

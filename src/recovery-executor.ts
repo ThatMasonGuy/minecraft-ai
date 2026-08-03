@@ -11,7 +11,7 @@ import type {
   ProjectPlan,
   ProjectStep
 } from "./types.js";
-import { isDroppedItemEntity } from "./defense-executor.js";
+import { isDroppedItemEntity } from "./entity-classification.js";
 
 const require = createRequire(import.meta.url);
 const { goals } = require(
@@ -145,7 +145,7 @@ export class RecoveryExecutor {
     }
     if (this.shouldPauseForDefense?.()) {
       this.lastProgressAt = Date.now();
-      this.report("waiting", "Recovery paused for self-defence");
+      this.report("waiting", "Recovery paused for combat safety");
       return;
     }
 

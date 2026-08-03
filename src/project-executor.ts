@@ -140,7 +140,7 @@ export class ProjectExecutor {
       return;
     }
     if (this.shouldPauseForDefense?.()) {
-      this.report("waiting", "Project paused for self-defence", step.title);
+      this.report("waiting", "Project paused for combat safety", step.title);
       return;
     }
 

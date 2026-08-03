@@ -13,7 +13,7 @@ import {
   isCurrentSupportBlock
 } from "./navigation.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
-import { isRecognizedHostileName } from "./defense-executor.js";
+import { isRecognizedHostileName } from "./entity-classification.js";
 
 const require = createRequire(import.meta.url);
 const { goals } = require(

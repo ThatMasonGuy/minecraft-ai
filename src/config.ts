@@ -44,8 +44,7 @@ const schema = z.object({
   MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(8_192).default(512),
   DAILY_TOKEN_BUDGET: z.coerce.number().int().min(10_000).default(1_000_000),
   DAILY_TOKEN_RESERVE: z.coerce.number().int().min(0).default(150_000),
-  RECONNECT_DELAY_MS: z.coerce.number().int().min(1_000).default(10_000),
-  ALLOW_PLAYER_COMBAT: booleanFromString(false)
+  RECONNECT_DELAY_MS: z.coerce.number().int().min(1_000).default(10_000)
 });
 
 const parsed = schema.parse(process.env);
@@ -86,6 +85,5 @@ export const config = {
     parsed.DAILY_TOKEN_RESERVE,
     parsed.DAILY_TOKEN_BUDGET
   ),
-  reconnectDelayMs: parsed.RECONNECT_DELAY_MS,
-  allowPlayerCombat: parsed.ALLOW_PLAYER_COMBAT
+  reconnectDelayMs: parsed.RECONNECT_DELAY_MS
 } as const;

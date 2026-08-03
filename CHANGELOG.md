@@ -6,6 +6,9 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Replaced the coupled self-defence executor with an enclosed combat system that owns encounter policy, equipment, server-tick attack cadence, strike spacing, shields, recovery, loot, and encounter telemetry while delegating every route to the shared movement system.
+- Made player combat an unconditional safety boundary: players are never targeted, and a second hit from the same player within 30 seconds triggers a high-priority non-retaliatory escape.
+- Moved an immediate wooden defence weapon ahead of quarrying in newly generated mining progressions.
 - Enforced enclosed subsystem boundaries so shared capabilities such as movement are consumed through public interfaces instead of being reimplemented inside combat, mining, building, or other systems.
 - Centralized deterministic executor priority and Pathfinder mutation ownership in an XState-backed runtime coordinator, so higher-priority safety work preempts lower-priority movement and unowned movement is rejected.
 - Restricted the viewer's default bind to loopback and added HTTP security headers, automatic bearer authentication for the operator API, and rate limiting for paid planning requests.
@@ -14,6 +17,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added deterministic combat policy coverage for unarmed, ranged, explosive, multi-hostile, weapon-selection, cooldown, and repeated-player-aggression behavior.
 - Added a shared movement-system interface with reusable follow, approach, hold, and multi-threat escape routing outcomes for deterministic subsystems.
 - Added a manual planner mode with explicit `!plan <task>` turns so development does not generate scheduled or incidental API traffic.
 - Added repository operating rules for autonomous testing, targeted validation, frequent Git checkpoints, attribution, and changelog maintenance.

@@ -127,6 +127,11 @@ describe("project plans", () => {
     ).toBeLessThan(
       plan.steps.findIndex((step) => step.id === "prospect_coal")
     );
+    expect(
+      plan.steps.findIndex((step) => step.id === "craft_wood_sword")
+    ).toBeLessThan(
+      plan.steps.findIndex((step) => step.id === "gather_cobblestone")
+    );
     expect(plan.steps.at(-1)?.spec).toMatchObject({
       kind: "deposit_item",
       itemName: "diamond",

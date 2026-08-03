@@ -5,10 +5,11 @@ import mineflayer, { type Bot } from "mineflayer";
 import { loader as autoEat } from "mineflayer-auto-eat";
 import { MinecraftActions } from "./actions.js";
 import { AutonomousAgent } from "./agent.js";
+import { CombatSystem } from "./combat-system.js";
 import { config } from "./config.js";
-import { DefenseExecutor } from "./defense-executor.js";
 import { ExecutionCoordinator } from "./execution-coordinator.js";
 import type { EpisodicMemory } from "./memory.js";
+import { PathfinderMovementSystem } from "./movement-system.js";
 import { Perception } from "./perception.js";
 import { parsePlanningCommand } from "./planner-mode.js";
 import { OperatorControl } from "./operator-control.js";
@@ -37,7 +38,7 @@ const armorManager = require(
 export class MinecraftRuntime {
   private bot?: Bot;
   private agent?: AutonomousAgent;
-  private defenseExecutor?: DefenseExecutor;
+  private combatSystem?: CombatSystem;
   private workExecutor?: WorkExecutor;
   private projectExecutor?: ProjectExecutor;
   private recoveryExecutor?: RecoveryExecutor;
@@ -61,7 +62,7 @@ export class MinecraftRuntime {
   stop(): void {
     this.stopping = true;
     this.agent?.stop();
-    this.defenseExecutor?.stop();
+    this.combatSystem?.stop();
     this.workExecutor?.stop();
     this.projectExecutor?.stop();
     this.recoveryExecutor?.stop();
@@ -136,16 +137,18 @@ export class MinecraftRuntime {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[survival] Armour manager failed: ${message}`);
       });
-      this.defenseExecutor = new DefenseExecutor(
+      const movementSystem = new PathfinderMovementSystem(bot);
+      this.combatSystem = new CombatSystem(
         bot,
         this.memory,
-        (activity) => this.viewerStatus.setDefense(activity),
+        movementSystem,
+        (activity) => this.viewerStatus.setCombat(activity),
         executionCoordinator.scope(
-          "defense",
-          () => this.defenseExecutor?.isActive() ?? false
+          "combat",
+          () => this.combatSystem?.isActive() ?? false
         )
       );
-      this.defenseExecutor.start();
+      this.combatSystem.start();
       if (config.viewerEnabled) {
         this.viewer = startViewerServer(bot, {
           host: config.viewerHost,
@@ -175,7 +178,7 @@ export class MinecraftRuntime {
         this.memory,
         actions,
         (activity) => this.viewerStatus.setWork(activity),
-        () => this.defenseExecutor?.isActive() ?? false,
+        () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
           "recovery",
           () => this.recoveryExecutor?.isActive() ?? false
@@ -188,7 +191,7 @@ export class MinecraftRuntime {
         actions,
         (activity) => this.viewerStatus.setWork(activity),
         () =>
-          (this.defenseExecutor?.isActive() ?? false) ||
+          (this.combatSystem?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false),
         executionCoordinator.scope(
           "storage",
@@ -266,7 +269,7 @@ export class MinecraftRuntime {
           }
         },
         () =>
-          (this.defenseExecutor?.isActive() ?? false) ||
+          (this.combatSystem?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false) ||
           (this.storageExecutor?.isActive() ?? false),
         executionCoordinator.scope(
@@ -289,7 +292,7 @@ export class MinecraftRuntime {
           }
         },
         () =>
-          (this.defenseExecutor?.isActive() ?? false) ||
+          (this.combatSystem?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false) ||
           (this.storageExecutor?.isActive() ?? false),
         executionCoordinator.scope(
@@ -511,14 +514,14 @@ export class MinecraftRuntime {
 
     bot.once("end", (reason) => {
       this.agent?.stop();
-      this.defenseExecutor?.stop();
+      this.combatSystem?.stop();
       this.workExecutor?.stop();
       this.projectExecutor?.stop();
       this.recoveryExecutor?.stop();
       this.storageExecutor?.stop();
       this.executionCoordinator?.dispose();
       this.agent = undefined;
-      this.defenseExecutor = undefined;
+      this.combatSystem = undefined;
       this.workExecutor = undefined;
       this.projectExecutor = undefined;
       this.recoveryExecutor = undefined;

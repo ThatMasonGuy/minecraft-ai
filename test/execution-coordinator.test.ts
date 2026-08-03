@@ -27,19 +27,19 @@ describe("ExecutionCoordinator", () => {
     const { bot, pathfinder } = testBot();
     const coordinator = new ExecutionCoordinator(bot as never);
     let workActive = true;
-    let defenseActive = true;
+    let combatActive = true;
     const work = coordinator.scope("work", () => workActive);
-    const defense = coordinator.scope("defense", () => defenseActive);
+    const combat = coordinator.scope("combat", () => combatActive);
 
     expect(await work.run(async () => void bot.pathfinder.setGoal("work"))).toBe(true);
     expect(coordinator.owner()).toBe("work");
-    expect(await defense.run(async () => void bot.pathfinder.setGoal("defense"))).toBe(true);
-    expect(coordinator.owner()).toBe("defense");
+    expect(await combat.run(async () => void bot.pathfinder.setGoal("combat"))).toBe(true);
+    expect(coordinator.owner()).toBe("combat");
     expect(pathfinder.stop).toHaveBeenCalledTimes(1);
     expect(await work.run(async () => void bot.pathfinder.setGoal("again"))).toBe(false);
 
-    defenseActive = false;
-    defense.runSync(() => bot.pathfinder.stop());
+    combatActive = false;
+    combat.runSync(() => bot.pathfinder.stop());
     expect(coordinator.owner()).toBe("idle");
     expect(await work.run(async () => void bot.pathfinder.setGoal("resumed"))).toBe(true);
     expect(coordinator.owner()).toBe("work");

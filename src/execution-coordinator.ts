@@ -3,7 +3,7 @@ import type { Bot } from "mineflayer";
 import { createActor, createMachine } from "xstate";
 
 export type ExecutionOwner =
-  | "defense"
+  | "combat"
   | "recovery"
   | "storage"
   | "work"
@@ -13,7 +13,7 @@ type ExecutionState = "idle" | ExecutionOwner;
 
 type CoordinatorEvent =
   | { type: "IDLE" }
-  | { type: "DEFENSE" }
+  | { type: "COMBAT" }
   | { type: "RECOVERY" }
   | { type: "STORAGE" }
   | { type: "WORK" }
@@ -25,7 +25,7 @@ const OWNER_PRIORITY: Record<ExecutionState, number> = {
   work: 2,
   storage: 3,
   recovery: 4,
-  defense: 5
+  combat: 5
 };
 
 const MUTATING_PATHFINDER_METHODS = new Set([
@@ -41,7 +41,7 @@ const executionMachine = createMachine({
   initial: "idle",
   states: {
     idle: { on: transitions() },
-    defense: { on: transitions() },
+    combat: { on: transitions() },
     recovery: { on: transitions() },
     storage: { on: transitions() },
     work: { on: transitions() },
@@ -161,7 +161,7 @@ export class ExecutionCoordinator {
 function transitions() {
   return {
     IDLE: "idle",
-    DEFENSE: "defense",
+    COMBAT: "combat",
     RECOVERY: "recovery",
     STORAGE: "storage",
     WORK: "work",

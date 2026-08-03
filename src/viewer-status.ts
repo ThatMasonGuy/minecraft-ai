@@ -34,7 +34,7 @@ export interface ViewerSnapshot {
   generatedAt: string;
   connection: ActivityUpdate;
   activity: ActivityUpdate;
-  defenseActivity: ActivityUpdate;
+  combatActivity: ActivityUpdate;
   agentActivity: ActivityUpdate;
   workActivity: ActivityUpdate;
   primaryGoal?: Goal;
@@ -85,7 +85,7 @@ export class ViewerStatusStore {
   );
   private agent: ActivityUpdate = status("idle", "Agent idle");
   private work: ActivityUpdate = status("idle", "No background work");
-  private defense: ActivityUpdate = status("idle", "No immediate threat");
+  private combat: ActivityUpdate = status("idle", "No immediate combat threat");
 
   setConnection(update: ActivityUpdate): void {
     this.connection = normalize(update, this.connection);
@@ -99,8 +99,8 @@ export class ViewerStatusStore {
     this.work = normalize(update, this.work);
   }
 
-  setDefense(update: ActivityUpdate): void {
-    this.defense = normalize(update, this.defense);
+  setCombat(update: ActivityUpdate): void {
+    this.combat = normalize(update, this.combat);
   }
 
   snapshot(memory: EpisodicMemory, bot?: Bot): ViewerSnapshot {
@@ -114,14 +114,14 @@ export class ViewerStatusStore {
       connection: this.connection,
       activity: selectActivity(
         this.connection,
-        this.defense,
+        this.combat,
         this.agent,
         this.work,
         Boolean(workOrder)
           || Boolean(project)
           || Boolean(memory.activeRecoveryJob())
       ),
-      defenseActivity: this.defense,
+      combatActivity: this.combat,
       agentActivity: this.agent,
       workActivity: this.work,
       primaryGoal,
@@ -264,14 +264,14 @@ function itemSnapshot(
 
 export function selectActivity(
   connection: ActivityUpdate,
-  defense: ActivityUpdate,
+  combat: ActivityUpdate,
   agent: ActivityUpdate,
   work: ActivityUpdate,
   hasActiveWorkOrder: boolean
 ): ActivityUpdate {
   if (connection.phase !== "online") return connection;
-  if (defense.phase === "acting" || defense.phase === "waiting" || defense.phase === "error") {
-    return defense;
+  if (combat.phase === "acting" || combat.phase === "waiting" || combat.phase === "error") {
+    return combat;
   }
   if (
     hasActiveWorkOrder &&

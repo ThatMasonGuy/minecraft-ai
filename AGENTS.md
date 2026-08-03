@@ -28,6 +28,7 @@ Treat combat, movement, building, mining, crafting, storage, recovery, perceptio
 - Runtime wiring may compose systems and arbitrate ownership, but it must not contain subsystem behavior. Planner and operator surfaces may start or query a system; they must not orchestrate its motor sequence.
 - Tests should exercise each subsystem through its public contract with fakes for adjacent systems. Keep end-to-end tests for integration boundaries rather than using them as the only way to validate internal behavior.
 - Before adding behavior, identify its owning subsystem. If ownership is ambiguous, define or repair the boundary before implementing the behavior.
+- Player combat is outside the combat subsystem's permitted behavior and must not be exposed through configuration, planner tools, or operator tools. A repeated player attack invokes the movement system's escape outcome without retaliation.
 
 ## API cost attribution
 

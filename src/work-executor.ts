@@ -74,7 +74,7 @@ export class WorkExecutor {
     if (this.shouldPauseForDefense?.()) {
       this.reportActivity(
         "waiting",
-        "Work paused for self-defence",
+        "Work paused for combat safety",
         `Work order ${order.id} will resume when the threat passes`
       );
       return;
