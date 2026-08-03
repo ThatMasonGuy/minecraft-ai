@@ -25,8 +25,8 @@ export async function startOperatorServer(
   app.get("/api/operator/status", (_request, response) => {
     response.json(options.control.status());
   });
-  app.get("/api/operator/usage", (_request, response) => {
-    response.json(options.control.usage());
+  app.get("/api/operator/usage", (request, response) => {
+    response.json(options.control.usage(request.query));
   });
   app.post("/api/operator/tasks/gather", route((body) => options.control.submitGather(body)));
   app.post("/api/operator/tasks/project", route((body) => options.control.submitProject(body)));

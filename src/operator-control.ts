@@ -1,4 +1,12 @@
+import crypto from "node:crypto";
 import { z } from "zod";
+import {
+  API_REQUEST_ROLES,
+  API_TRIGGER_SOURCES,
+  API_WORKLOAD_TYPES,
+  type ApiUsageFilters
+} from "./api-usage.js";
+import type { PlanningAttribution } from "./agent.js";
 import type { EpisodicMemory } from "./memory.js";
 import {
   parseProjectPlanDraft,
@@ -33,7 +41,26 @@ const cancelSchema = z.object({
 });
 
 const planSchema = z.object({
-  task: z.string().min(1).max(4_000)
+  task: z.string().min(1).max(4_000),
+  workloadType: z.enum(API_WORKLOAD_TYPES).default("development_test"),
+  taskType: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).default("operator_plan"),
+  taskId: z.string().min(1).max(128).optional(),
+  tags: z
+    .record(z.string().min(1).max(64), z.string().max(128))
+    .refine((tags) => Object.keys(tags).length <= 16, "At most 16 tags are allowed")
+    .default({})
+});
+
+const usageFilterSchema = z.object({
+  from: optionalIsoDate(),
+  to: optionalIsoDate(),
+  model: optionalQueryString(),
+  requestRole: optionalEnum(API_REQUEST_ROLES),
+  workloadType: optionalEnum(API_WORKLOAD_TYPES),
+  triggerSource: optionalEnum(API_TRIGGER_SOURCES),
+  taskType: optionalQueryString(),
+  taskId: optionalQueryString(),
+  tag: optionalQueryString()
 });
 
 export class OperatorInputError extends Error {}
@@ -41,7 +68,7 @@ export class OperatorInputError extends Error {}
 export interface OperatorControlOptions {
   memory: EpisodicMemory;
   inventoryCount: (itemName: string) => number;
-  requestPlanning: (task: string) => void;
+  requestPlanning: (task: string, attribution: PlanningAttribution) => void;
   plannerMode: "manual" | "automatic";
   toolMode: "dry_run" | "execute";
   model: string;
@@ -60,8 +87,9 @@ export class OperatorControl {
     };
   }
 
-  usage(): object {
-    return this.options.memory.apiUsageSummary();
+  usage(input: unknown = {}): object {
+    const filters = usageFilterSchema.parse(input) as ApiUsageFilters;
+    return this.options.memory.apiUsageSummary("Australia/Brisbane", filters);
   }
 
   submitGather(input: unknown): object {
@@ -137,7 +165,8 @@ export class OperatorControl {
   }
 
   requestPlan(input: unknown): object {
-    const { task } = planSchema.parse(input);
+    const { task, workloadType, taskType, tags, taskId: suppliedTaskId } =
+      planSchema.parse(input);
     if (
       this.options.memory.activeProject() ||
       this.options.memory.activeWorkOrder()
@@ -153,18 +182,47 @@ export class OperatorControl {
       actor: "operator",
       importance: 8
     });
-    this.options.requestPlanning(
-      `Local operator explicitly requested planning: ${task}`
-    );
+    const taskId = suppliedTaskId ?? `operator:${crypto.randomUUID()}`;
+    this.options.requestPlanning(`Local operator explicitly requested planning: ${task}`, {
+      workloadType,
+      triggerSource: "operator",
+      taskType,
+      taskId,
+      tags
+    });
     return {
       accepted: true,
       paid: true,
+      attribution: { workloadType, taskType, taskId, tags },
       note:
         this.options.toolMode === "dry_run"
           ? "Dry-run mode uses one API request and records proposals without executing tools."
           : "Execute mode may use one initial API call plus configured tool continuations."
     };
   }
+}
+
+function optionalQueryString() {
+  return z.preprocess(
+    (value) => (Array.isArray(value) ? value[0] : value),
+    z.string().min(1).optional()
+  );
+}
+
+function optionalIsoDate() {
+  return z.preprocess(
+    (value) => (Array.isArray(value) ? value[0] : value),
+    z.string().datetime({ offset: true }).optional()
+  );
+}
+
+function optionalEnum<const Values extends readonly [string, ...string[]]>(
+  values: Values
+) {
+  return z.preprocess(
+    (value) => (Array.isArray(value) ? value[0] : value),
+    z.enum(values).optional()
+  );
 }
 
 function assertProjectSemantics(draft: ProjectPlanDraft): void {

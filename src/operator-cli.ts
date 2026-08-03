@@ -11,7 +11,7 @@ async function main(): Promise<void> {
     case "status":
       return print(await request("GET", "/api/operator/status"));
     case "usage":
-      return print(await request("GET", "/api/operator/usage"));
+      return usageReport(args);
     case "gather":
       return submitGather(args);
     case "project":
@@ -23,14 +23,47 @@ async function main(): Promise<void> {
         })
       );
     case "plan":
-      if (args.length === 0) throw new Error("plan requires a high-level task");
-      console.error("[operator] This is an explicitly paid planner request.");
-      return print(
-        await request("POST", "/api/operator/plan", { task: args.join(" ") })
-      );
+      return submitPlan(args);
     default:
       throw new Error(usage());
   }
+}
+
+async function usageReport(args: string[]): Promise<void> {
+  const options = parseOptions(args);
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(options)) {
+    query.set(toCamelCase(key), value);
+  }
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  print(await request("GET", `/api/operator/usage${suffix}`));
+}
+
+async function submitPlan(args: string[]): Promise<void> {
+  if (args.length === 0) throw new Error("plan requires a high-level task");
+  const options = args[0]?.startsWith("--") ? parseOptions(args) : {};
+  const task = options.task ?? (Object.keys(options).length === 0 ? args.join(" ") : undefined);
+  if (!task) throw new Error("plan requires --task <high-level task>");
+  const tags = Object.fromEntries(
+    (options.tags ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map((tag) => {
+        const separator = tag.indexOf("=");
+        if (separator < 1) throw new Error(`Tag must be key=value: ${tag}`);
+        return [tag.slice(0, separator), tag.slice(separator + 1)];
+      })
+  );
+  console.error("[operator] This is an explicitly paid planner request.");
+  print(
+    await request("POST", "/api/operator/plan", {
+      task,
+      workloadType: options.workload,
+      taskType: options["task-type"],
+      taskId: options["task-id"],
+      tags
+    })
+  );
 }
 
 async function submitGather(args: string[]): Promise<void> {
@@ -101,6 +134,12 @@ function required(options: Record<string, string>, name: string): string {
   return value;
 }
 
+function toCamelCase(value: string): string {
+  return value.replace(/-([a-z])/g, (_match, character: string) =>
+    character.toUpperCase()
+  );
+}
+
 function parsePosition(value: string): { x: number; y: number; z: number } {
   const parts = value.split(",").map(Number);
   const [x, y, z] = parts;
@@ -118,11 +157,12 @@ function usage(): string {
   return [
     "Usage:",
     "  npm run operator -- status",
-    "  npm run operator -- usage",
+    "  npm run operator -- usage [--request-role follow_up] [--workload-type task_planning] [--trigger-source operator] [--task-type shelter] [--tag key=value]",
     "  npm run operator -- gather --item oak_log --blocks oak_log --minimum 16 [--continuation until_replaced] [--container x,y,z]",
     "  npm run operator -- project path/to/project.json",
     "  npm run operator -- cancel [reason]",
-    "  npm run operator -- plan <high-level task>  # paid"
+    "  npm run operator -- plan <high-level task>  # paid, default tags",
+    "  npm run operator -- plan --task <high-level task> --workload task_planning --task-type shelter [--tags key=value,key2=value2]  # paid"
   ].join("\n");
 }
 

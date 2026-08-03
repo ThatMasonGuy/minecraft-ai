@@ -125,11 +125,32 @@ describe("OperatorControl", () => {
     const planning = vi.fn();
     const { control, memory } = createControl(undefined, planning);
 
-    expect(control.requestPlan({ task: "Propose a bounded test plan" })).toMatchObject({
+    expect(
+      control.requestPlan({
+        task: "Propose a bounded test plan",
+        workloadType: "task_planning",
+        taskType: "shelter",
+        tags: { evaluation: "boundary" }
+      })
+    ).toMatchObject({
       accepted: true,
-      paid: true
+      paid: true,
+      attribution: {
+        workloadType: "task_planning",
+        taskType: "shelter",
+        tags: { evaluation: "boundary" }
+      }
     });
     expect(planning).toHaveBeenCalledOnce();
+    expect(planning).toHaveBeenCalledWith(
+      expect.stringContaining("Propose a bounded test plan"),
+      expect.objectContaining({
+        workloadType: "task_planning",
+        triggerSource: "operator",
+        taskType: "shelter",
+        tags: { evaluation: "boundary" }
+      })
+    );
 
     control.submitGather({
       itemName: "oak_log",

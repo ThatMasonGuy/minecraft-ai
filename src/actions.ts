@@ -148,6 +148,16 @@ export class MinecraftActions {
         }
       ),
       tool(
+        "delegate_gather",
+        "Delegate a broad gathering outcome to deterministic source selection, navigation, mining, pickup, and storage. Never provide coordinates or motor steps.",
+        {
+          goal_id: numberSchema("Related active goal id, or 0 if none"),
+          item_name: stringSchema("Registry item to gather"),
+          minimum_count: numberSchema("Minimum new item count, 1 to 1000000"),
+          continuation: enumSchema(["stop_at_minimum", "until_replaced"])
+        }
+      ),
+      tool(
         "set_gather_work_order",
         "Delegate persistent block gathering to the deterministic executor. A minimum is a success milestone; continuation can stop there or keep gathering until replaced. Container storage requires a currently visible chest, trapped chest, or barrel.",
         {
@@ -197,6 +207,12 @@ export class MinecraftActions {
         reason: stringSchema("Why the work should stop")
       })
     ];
+  }
+
+  plannerDefinitions(): AgentToolDefinition[] {
+    return this.definitions().filter((definition) =>
+      HIGH_LEVEL_PLANNER_TOOLS.has(definition.name)
+    );
   }
 
   async execute(name: string, rawArguments: unknown): Promise<ActionResult> {
@@ -374,6 +390,46 @@ export class MinecraftActions {
           storage
         }, initialCount);
         return ok(`Started deterministic work order ${order.id}`, order);
+      }
+      case "delegate_gather": {
+        const args = z
+          .object({
+            goal_id: z.number().int().min(0),
+            item_name: z.string().min(1).max(128),
+            minimum_count: z.number().int().min(1).max(1_000_000),
+            continuation: z.enum(["stop_at_minimum", "until_replaced"])
+          })
+          .parse(raw);
+        const blockNames = deterministicGatherSources(args.item_name);
+        if (blockNames.length === 0) {
+          return fail(
+            `No deterministic gather-source rule exists for ${args.item_name}`
+          );
+        }
+        const dimension = String(this.bot.game?.dimension);
+        const ownedStorage = this.memory.ownedContainers(dimension)[0];
+        const storage = ownedStorage
+          ? {
+              mode: "container" as const,
+              position: ownedStorage.position
+            }
+          : { mode: "inventory" as const };
+        const initialCount = inventoryCount(this.bot, args.item_name);
+        const order = this.memory.createGatherBlocksWorkOrder(
+          {
+            goalId: args.goal_id === 0 ? undefined : args.goal_id,
+            itemName: args.item_name,
+            blockNames,
+            minimumCount: args.minimum_count,
+            continuation: args.continuation,
+            storage
+          },
+          initialCount
+        );
+        return ok(
+          `Delegated ${args.minimum_count} ${args.item_name} to deterministic work order ${order.id}`,
+          order
+        );
       }
       case "deposit_item_in_container":
         return this.depositItemInContainer(raw);
@@ -812,6 +868,47 @@ export class MinecraftActions {
       importance: result.ok ? 5 : 7
     });
   }
+}
+
+const HIGH_LEVEL_PLANNER_TOOLS = new Set([
+  "speak",
+  "recall",
+  "recall_nearby",
+  "create_goal",
+  "finish_goal",
+  "delegate_gather",
+  "cancel_work_order"
+]);
+
+export function isHighLevelPlannerTool(name: string): boolean {
+  return HIGH_LEVEL_PLANNER_TOOLS.has(name);
+}
+
+export function deterministicGatherSources(itemName: string): string[] {
+  const explicit: Record<string, string[]> = {
+    cobblestone: ["stone"],
+    dirt: ["dirt", "grass_block"],
+    coal: ["coal_ore", "deepslate_coal_ore"],
+    raw_iron: ["iron_ore", "deepslate_iron_ore"],
+    raw_copper: ["copper_ore", "deepslate_copper_ore"],
+    raw_gold: ["gold_ore", "deepslate_gold_ore"],
+    diamond: ["diamond_ore", "deepslate_diamond_ore"],
+    emerald: ["emerald_ore", "deepslate_emerald_ore"],
+    redstone: ["redstone_ore", "deepslate_redstone_ore"],
+    lapis_lazuli: ["lapis_ore", "deepslate_lapis_ore"],
+    flint: ["gravel"]
+  };
+  if (explicit[itemName]) return explicit[itemName];
+  if (
+    itemName.endsWith("_log") ||
+    itemName.endsWith("_stem") ||
+    itemName.endsWith("_wood") ||
+    itemName.endsWith("_hyphae") ||
+    ["sand", "gravel", "clay", "netherrack", "end_stone"].includes(itemName)
+  ) {
+    return [itemName];
+  }
+  return [];
 }
 
 function tool(

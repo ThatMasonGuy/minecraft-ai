@@ -45,6 +45,7 @@ export function createWorldStateSnapshot(
   assertDirectory(paths.worldDir, "world data");
   assertDirectory(paths.agentDir, "agent data");
   checkpointMemory(paths.agentDir);
+  migrateMemory(paths.agentDir);
 
   fs.mkdirSync(paths.snapshotDir, { recursive: true });
   const target = path.join(paths.snapshotDir, name);
@@ -101,6 +102,7 @@ export function restoreWorldStateSnapshot(
   const paths = resolvePaths(options);
   (options.assertStopped ?? (() => assertComposeStopped(paths.rootDir)))();
   checkpointMemory(paths.agentDir);
+  migrateMemory(paths.agentDir);
 
   const source = path.join(paths.snapshotDir, name);
   const manifest = readAndVerifySnapshot(source);
@@ -218,7 +220,9 @@ function mergeApiUsageHistory(
         INSERT OR IGNORE INTO api_usage_ledger (
           request_id, occurred_at, completed_at, provider, endpoint,
           requested_model, response_id, response_model, service_tier, phase,
-          trigger, reasoning_effort, status, latency_ms, input_tokens,
+          trigger, reasoning_effort, turn_id, request_role, workload_type,
+          trigger_source, task_type, task_id, parent_request_id, tags_json,
+          status, latency_ms, input_tokens,
           cached_input_tokens, cache_write_tokens, output_tokens,
           reasoning_tokens, total_tokens, web_search_calls, raw_usage_json,
           error_class, error_message, price_version_id,
@@ -228,7 +232,10 @@ function mergeApiUsageHistory(
           usage.request_id, usage.occurred_at, usage.completed_at,
           usage.provider, usage.endpoint, usage.requested_model,
           usage.response_id, usage.response_model, usage.service_tier,
-          usage.phase, usage.trigger, usage.reasoning_effort, usage.status,
+          usage.phase, usage.trigger, usage.reasoning_effort,
+          usage.turn_id, usage.request_role, usage.workload_type,
+          usage.trigger_source, usage.task_type, usage.task_id,
+          usage.parent_request_id, usage.tags_json, usage.status,
           usage.latency_ms, usage.input_tokens, usage.cached_input_tokens,
           usage.cache_write_tokens, usage.output_tokens,
           usage.reasoning_tokens, usage.total_tokens, usage.web_search_calls,
@@ -371,6 +378,13 @@ function checkpointMemory(agentDir: string): void {
   } finally {
     database.close();
   }
+}
+
+function migrateMemory(agentDir: string): void {
+  const databasePath = path.join(agentDir, "memory.sqlite");
+  if (!fs.existsSync(databasePath)) return;
+  const memory = new EpisodicMemory(databasePath);
+  memory.close();
 }
 
 function copyTree(source: string, target: string, excluded = new Set<string>()): void {

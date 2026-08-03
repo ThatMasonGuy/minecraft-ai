@@ -199,7 +199,8 @@ export class MinecraftRuntime {
               .items()
               .filter((item) => item.name === itemName)
               .reduce((total, item) => total + item.count, 0),
-          requestPlanning: (task) => this.agent?.wake(task),
+          requestPlanning: (task, attribution) =>
+            this.agent?.wake(task, attribution),
           plannerMode: config.plannerMode,
           toolMode: config.plannerToolMode,
           model: config.openaiModel
@@ -225,7 +226,12 @@ export class MinecraftRuntime {
         perception,
         actions,
         config.workExecutorTickMs,
-        (reason) => this.agent?.wakeAutomatically(reason),
+        (reason) =>
+          this.agent?.wakeAutomatically(reason, {
+            workloadType: "executor_escalation",
+            triggerSource: "executor",
+            taskType: "work_order"
+          }),
         (activity) => {
           if (
             !this.recoveryExecutor?.isActive() &&
@@ -315,11 +321,22 @@ export class MinecraftRuntime {
           return;
         }
         this.agent?.wake(
-          `${username} said in chat: ${planning.task} (explicit !plan request)`
+          `${username} said in chat: ${planning.task} (explicit !plan request)`,
+          {
+            workloadType: "task_planning",
+            triggerSource: "chat",
+            taskType: "player_request",
+            tags: { player: username }
+          }
         );
         return;
       }
-      this.agent?.wakeAutomatically(`${username} said in chat: ${message}`);
+      this.agent?.wakeAutomatically(`${username} said in chat: ${message}`, {
+        workloadType: "conversation",
+        triggerSource: "chat",
+        taskType: "conversation",
+        tags: { player: username }
+      });
     });
 
     bot.on("whisper", (username, message) => {
@@ -339,11 +356,22 @@ export class MinecraftRuntime {
           return;
         }
         this.agent?.wake(
-          `${username} whispered: ${planning.task} (explicit !plan request)`
+          `${username} whispered: ${planning.task} (explicit !plan request)`,
+          {
+            workloadType: "task_planning",
+            triggerSource: "whisper",
+            taskType: "player_request",
+            tags: { player: username }
+          }
         );
         return;
       }
-      this.agent?.wakeAutomatically(`${username} whispered: ${message}`);
+      this.agent?.wakeAutomatically(`${username} whispered: ${message}`, {
+        workloadType: "conversation",
+        triggerSource: "whisper",
+        taskType: "conversation",
+        tags: { player: username }
+      });
     });
 
     bot.on("health", () => {
@@ -361,7 +389,11 @@ export class MinecraftRuntime {
       });
       const dangerous = bot.health <= 8 || bot.food <= 6;
       if (dangerous && !this.vitalsDangerous) {
-        this.agent?.wakeAutomatically("survival status became dangerous");
+        this.agent?.wakeAutomatically("survival status became dangerous", {
+          workloadType: "survival",
+          triggerSource: "vitals",
+          taskType: "danger_vitals"
+        });
       }
       this.vitalsDangerous = dangerous;
     });

@@ -4,6 +4,46 @@ export type ApiUsageStatus =
   | "failed"
   | "cancelled";
 
+export const API_REQUEST_ROLES = ["initial", "follow_up"] as const;
+export type ApiRequestRole = (typeof API_REQUEST_ROLES)[number];
+
+export const API_WORKLOAD_TYPES = [
+  "task_planning",
+  "development_test",
+  "reflection",
+  "conversation",
+  "survival",
+  "executor_escalation",
+  "budget_resume",
+  "other"
+] as const;
+export type ApiWorkloadType = (typeof API_WORKLOAD_TYPES)[number];
+
+export const API_TRIGGER_SOURCES = [
+  "operator",
+  "chat",
+  "whisper",
+  "schedule",
+  "startup",
+  "vitals",
+  "executor",
+  "budget",
+  "internal",
+  "legacy"
+] as const;
+export type ApiTriggerSource = (typeof API_TRIGGER_SOURCES)[number];
+
+export interface ApiUsageAttribution {
+  turnId: string;
+  requestRole: ApiRequestRole;
+  workloadType: ApiWorkloadType;
+  triggerSource: ApiTriggerSource;
+  taskType?: string;
+  taskId?: string;
+  parentRequestId?: string;
+  tags: Record<string, string>;
+}
+
 export interface ApiTokenUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
@@ -26,6 +66,7 @@ export interface ApiUsageWrite {
   phase: string;
   trigger?: string;
   reasoningEffort?: string;
+  attribution: ApiUsageAttribution;
   status: ApiUsageStatus;
   latencyMs?: number;
   usage?: ApiTokenUsage;
@@ -88,14 +129,44 @@ export interface ApiUsageAggregate {
   unknownCostCalls: number;
 }
 
+export interface ApiUsageFilters {
+  from?: string;
+  to?: string;
+  model?: string;
+  requestRole?: ApiRequestRole;
+  workloadType?: ApiWorkloadType;
+  triggerSource?: ApiTriggerSource;
+  taskType?: string;
+  taskId?: string;
+  tag?: string;
+}
+
+export interface ApiUsageTurnAggregate extends ApiUsageAggregate {
+  turnId: string;
+  workloadType: ApiWorkloadType;
+  triggerSource: ApiTriggerSource;
+  taskType?: string;
+  taskId?: string;
+  tags: Record<string, string>;
+  firstOccurredAt: string;
+  lastOccurredAt: string;
+}
+
 export interface ApiUsageSummary {
   timezone: string;
+  filters: ApiUsageFilters;
   firstOccurredAt?: string;
   lastOccurredAt?: string;
   lifetime: ApiUsageAggregate;
   byDay: Record<string, ApiUsageAggregate>;
   byModel: Record<string, ApiUsageAggregate>;
   byPhase: Record<string, ApiUsageAggregate>;
+  byRequestRole: Record<string, ApiUsageAggregate>;
+  byWorkloadType: Record<string, ApiUsageAggregate>;
+  byTriggerSource: Record<string, ApiUsageAggregate>;
+  byTaskType: Record<string, ApiUsageAggregate>;
+  byTag: Record<string, ApiUsageAggregate>;
+  topTurns: ApiUsageTurnAggregate[];
 }
 
 export const INITIAL_GPT_5_6_LUNA_PRICE: ApiPriceVersion = {
@@ -162,20 +233,30 @@ export function estimateApiUsageCostUsdMicros(
 
 export function summarizeApiUsage(
   records: ApiUsageRecord[],
-  timezone = "Australia/Brisbane"
+  timezone = "Australia/Brisbane",
+  filters: ApiUsageFilters = {}
 ): ApiUsageSummary {
-  const sorted = [...records].sort((left, right) =>
+  const sorted = records.filter((record) => matchesFilters(record, filters)).sort((left, right) =>
     left.occurredAt.localeCompare(right.occurredAt)
   );
   const summary: ApiUsageSummary = {
     timezone,
+    filters,
     firstOccurredAt: sorted[0]?.occurredAt,
     lastOccurredAt: sorted.at(-1)?.occurredAt,
     lifetime: emptyAggregate(),
     byDay: {},
     byModel: {},
-    byPhase: {}
+    byPhase: {},
+    byRequestRole: {},
+    byWorkloadType: {},
+    byTriggerSource: {},
+    byTaskType: {},
+    byTag: {},
+    topTurns: []
   };
+
+  const turns = new Map<string, ApiUsageTurnAggregate>();
 
   for (const record of sorted) {
     addRecord(summary.lifetime, record);
@@ -185,9 +266,91 @@ export function summarizeApiUsage(
     addRecord((summary.byDay[day] ??= emptyAggregate()), record);
     addRecord((summary.byModel[model] ??= emptyAggregate()), record);
     addRecord((summary.byPhase[phase] ??= emptyAggregate()), record);
+    addRecord(
+      (summary.byRequestRole[record.attribution.requestRole] ??= emptyAggregate()),
+      record
+    );
+    addRecord(
+      (summary.byWorkloadType[record.attribution.workloadType] ??= emptyAggregate()),
+      record
+    );
+    addRecord(
+      (summary.byTriggerSource[record.attribution.triggerSource] ??= emptyAggregate()),
+      record
+    );
+    const taskType = record.attribution.taskType ?? "untagged";
+    addRecord((summary.byTaskType[taskType] ??= emptyAggregate()), record);
+    for (const [key, value] of Object.entries(record.attribution.tags)) {
+      addRecord((summary.byTag[`${key}=${value}`] ??= emptyAggregate()), record);
+    }
+    const existingTurn = turns.get(record.attribution.turnId);
+    const turn = existingTurn ?? createTurnAggregate(record);
+    addRecord(turn, record);
+    turn.lastOccurredAt = record.occurredAt;
+    turns.set(record.attribution.turnId, turn);
   }
 
+  summary.topTurns = [...turns.values()]
+    .sort(
+      (left, right) =>
+        right.estimatedCostUsdMicros - left.estimatedCostUsdMicros ||
+        right.totalTokens - left.totalTokens ||
+        right.calls - left.calls
+    )
+    .slice(0, 20);
+
   return summary;
+}
+
+function createTurnAggregate(record: ApiUsageRecord): ApiUsageTurnAggregate {
+  return {
+    ...emptyAggregate(),
+    turnId: record.attribution.turnId,
+    workloadType: record.attribution.workloadType,
+    triggerSource: record.attribution.triggerSource,
+    taskType: record.attribution.taskType,
+    taskId: record.attribution.taskId,
+    tags: record.attribution.tags,
+    firstOccurredAt: record.occurredAt,
+    lastOccurredAt: record.occurredAt
+  };
+}
+
+function matchesFilters(
+  record: ApiUsageRecord,
+  filters: ApiUsageFilters
+): boolean {
+  const model = record.responseModel ?? record.requestedModel;
+  if (filters.from && record.occurredAt < filters.from) return false;
+  if (filters.to && record.occurredAt >= filters.to) return false;
+  if (filters.model && model !== filters.model) return false;
+  if (filters.requestRole && record.attribution.requestRole !== filters.requestRole) {
+    return false;
+  }
+  if (
+    filters.workloadType &&
+    record.attribution.workloadType !== filters.workloadType
+  ) {
+    return false;
+  }
+  if (
+    filters.triggerSource &&
+    record.attribution.triggerSource !== filters.triggerSource
+  ) {
+    return false;
+  }
+  if (filters.taskType && record.attribution.taskType !== filters.taskType) {
+    return false;
+  }
+  if (filters.taskId && record.attribution.taskId !== filters.taskId) return false;
+  if (filters.tag) {
+    const separator = filters.tag.indexOf("=");
+    const key = separator < 0 ? filters.tag : filters.tag.slice(0, separator);
+    const value = separator < 0 ? undefined : filters.tag.slice(separator + 1);
+    if (!(key in record.attribution.tags)) return false;
+    if (value !== undefined && record.attribution.tags[key] !== value) return false;
+  }
+  return true;
 }
 
 function emptyAggregate(): ApiUsageAggregate {

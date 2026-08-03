@@ -8,6 +8,7 @@ import {
   type ApiPriceVersion,
   type ApiTokenUsage,
   type ApiUsageRecord,
+  type ApiUsageFilters,
   type ApiUsageSummary,
   type ApiUsageWrite
 } from "./api-usage.js";
@@ -140,6 +141,14 @@ interface ApiUsageRow {
   phase: string;
   trigger: string | null;
   reasoning_effort: string | null;
+  turn_id: string | null;
+  request_role: ApiUsageRecord["attribution"]["requestRole"] | null;
+  workload_type: ApiUsageRecord["attribution"]["workloadType"] | null;
+  trigger_source: ApiUsageRecord["attribution"]["triggerSource"] | null;
+  task_type: string | null;
+  task_id: string | null;
+  parent_request_id: string | null;
+  tags_json: string | null;
   status: ApiUsageRecord["status"];
   latency_ms: number | null;
   input_tokens: number | null;
@@ -333,6 +342,14 @@ export class EpisodicMemory {
         phase TEXT NOT NULL,
         trigger TEXT,
         reasoning_effort TEXT,
+        turn_id TEXT,
+        request_role TEXT,
+        workload_type TEXT,
+        trigger_source TEXT,
+        task_type TEXT,
+        task_id TEXT,
+        parent_request_id TEXT,
+        tags_json TEXT,
         status TEXT NOT NULL
           CHECK(status IN ('completed', 'incomplete', 'failed', 'cancelled')),
         latency_ms INTEGER,
@@ -362,6 +379,7 @@ export class EpisodicMemory {
 
       CREATE INDEX IF NOT EXISTS idx_api_usage_model_time
       ON api_usage_ledger(response_model, occurred_at ASC);
+
     `);
     this.ensureColumn(
       "work_orders",
@@ -384,6 +402,21 @@ export class EpisodicMemory {
       "origin",
       "TEXT NOT NULL DEFAULT 'planner'"
     );
+    this.ensureColumn("api_usage_ledger", "turn_id", "TEXT");
+    this.ensureColumn("api_usage_ledger", "request_role", "TEXT");
+    this.ensureColumn("api_usage_ledger", "workload_type", "TEXT");
+    this.ensureColumn("api_usage_ledger", "trigger_source", "TEXT");
+    this.ensureColumn("api_usage_ledger", "task_type", "TEXT");
+    this.ensureColumn("api_usage_ledger", "task_id", "TEXT");
+    this.ensureColumn("api_usage_ledger", "parent_request_id", "TEXT");
+    this.ensureColumn("api_usage_ledger", "tags_json", "TEXT");
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_api_usage_turn
+      ON api_usage_ledger(turn_id, occurred_at ASC);
+
+      CREATE INDEX IF NOT EXISTS idx_api_usage_attribution
+      ON api_usage_ledger(workload_type, request_role, trigger_source, occurred_at ASC);
+    `);
     this.ensureColumn(
       "recovery_jobs",
       "loaded_chunk_ms",
@@ -523,7 +556,9 @@ export class EpisodicMemory {
         INSERT INTO api_usage_ledger (
           request_id, occurred_at, completed_at, provider, endpoint,
           requested_model, response_id, response_model, service_tier,
-          phase, trigger, reasoning_effort, status, latency_ms,
+          phase, trigger, reasoning_effort, turn_id, request_role,
+          workload_type, trigger_source, task_type, task_id,
+          parent_request_id, tags_json, status, latency_ms,
           input_tokens, cached_input_tokens, cache_write_tokens,
           output_tokens, reasoning_tokens, total_tokens, web_search_calls,
           raw_usage_json, error_class, error_message,
@@ -531,7 +566,7 @@ export class EpisodicMemory {
           created_at
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `)
       .run(
@@ -547,6 +582,14 @@ export class EpisodicMemory {
         input.phase,
         input.trigger ?? null,
         input.reasoningEffort ?? null,
+        input.attribution.turnId,
+        input.attribution.requestRole,
+        input.attribution.workloadType,
+        input.attribution.triggerSource,
+        input.attribution.taskType ?? null,
+        input.attribution.taskId ?? null,
+        input.attribution.parentRequestId ?? null,
+        JSON.stringify(input.attribution.tags),
         input.status,
         input.latencyMs ?? null,
         input.usage?.inputTokens ?? null,
@@ -587,6 +630,7 @@ export class EpisodicMemory {
           serviceTier: input.serviceTier,
           phase: input.phase,
           reasoningEffort: input.reasoningEffort,
+          attribution: input.attribution,
           status: input.status,
           latencyMs: input.latencyMs,
           webSearchCalls: input.webSearchCalls,
@@ -636,8 +680,11 @@ export class EpisodicMemory {
     return rows.map(toApiUsageRecord);
   }
 
-  apiUsageSummary(timezone = "Australia/Brisbane"): ApiUsageSummary {
-    return summarizeApiUsage(this.apiUsageRecords(), timezone);
+  apiUsageSummary(
+    timezone = "Australia/Brisbane",
+    filters: ApiUsageFilters = {}
+  ): ApiUsageSummary {
+    return summarizeApiUsage(this.apiUsageRecords(), timezone, filters);
   }
 
   tokenUsageSince(occurredAt: string): number {
@@ -1282,6 +1329,16 @@ export class EpisodicMemory {
         serviceTier: readString(object.serviceTier),
         phase: readString(object.phase) ?? "legacy event",
         reasoningEffort: readString(object.reasoningEffort),
+        attribution: {
+          turnId: readString(object.turnId) ?? requestId,
+          requestRole: readString(object.requestRole) === "follow_up" ? "follow_up" : "initial",
+          workloadType: "other",
+          triggerSource: "legacy",
+          taskType: readString(object.taskType),
+          taskId: readString(object.taskId),
+          parentRequestId: readString(object.parentRequestId),
+          tags: {}
+        },
         status,
         latencyMs: readNumber(object.latencyMs),
         usage,
@@ -1382,6 +1439,20 @@ function toApiUsageRecord(row: ApiUsageRow): ApiUsageRecord {
     phase: row.phase,
     trigger: row.trigger ?? undefined,
     reasoningEffort: row.reasoning_effort ?? undefined,
+    attribution: {
+      turnId: row.turn_id ?? row.request_id,
+      requestRole:
+        row.request_role ??
+        (row.phase.startsWith("tool continuation") ? "follow_up" : "initial"),
+      workloadType: row.workload_type ?? "other",
+      triggerSource: row.trigger_source ?? "legacy",
+      taskType: row.task_type ?? undefined,
+      taskId: row.task_id ?? undefined,
+      parentRequestId: row.parent_request_id ?? undefined,
+      tags: row.tags_json
+        ? (JSON.parse(row.tags_json) as Record<string, string>)
+        : {}
+    },
     status: row.status,
     latencyMs: row.latency_ms ?? undefined,
     usage: hasUsage

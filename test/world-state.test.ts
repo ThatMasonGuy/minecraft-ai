@@ -104,6 +104,14 @@ function recordUsage(
     responseModel: "gpt-5.6-luna",
     serviceTier: "default",
     phase: "snapshot-test",
+    attribution: {
+      turnId: requestId,
+      requestRole: "initial",
+      workloadType: "development_test",
+      triggerSource: "operator",
+      taskType: "snapshot_test",
+      tags: {}
+    },
     status: "completed",
     usage: {
       inputTokens: totalTokens - 10,

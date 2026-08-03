@@ -6,6 +6,25 @@ Build a Minecraft player that can perceive, plan, remember, and act autonomously
 
 The OpenAI-powered Minecraft agent is the planner. Deterministic executors are its motor layer. Codex is the engineer and test operator; Codex must not become a substitute Minecraft player.
 
+## Planner granularity boundary
+
+The planner may define outcomes, priorities, constraints, minimum success conditions, and replacement or stopping policy. It must never define motor instructions.
+
+- Never ask the planner to move or look at coordinates, mine or place an individual block, choose a block face, enumerate blueprint placements, craft/equip/consume one step at a time, manipulate a specific slot, or provide a sequence of equivalent low-level instructions.
+- Low-level action methods may exist for deterministic executors, but they must not appear in the planner's callable tool surface. Enforce this with a narrow allowlist and tests; prompt text alone is not sufficient.
+- The planner may delegate only through broad, typed tools such as a gathering outcome. Deterministic code owns source selection, navigation, interaction coordinates, retries, storage choice, decomposition, verification, and continuation.
+- Explicit project JSON and blueprints are operator test fixtures only. Codex must not generate or submit them as a substitute for a missing high-level project compiler.
+- When a broad outcome is unsupported, preserve it as a measurable goal and implement the reusable deterministic compiler or executor. Never temporarily bridge the gap with model-authored coordinates or step-by-step instructions.
+- When reviewing a new planner tool, reject any schema that exposes world coordinates, block faces, inventory slots, or an ordered list of motor actions unless the user explicitly changes this architectural rule.
+
+## API cost attribution
+
+- Every new paid request must carry a stable turn ID, `initial` or `follow_up` request role, workload type, trigger source, optional task type/task ID, and bounded string tags.
+- All continuations from one planner turn must retain the same turn/task attribution and point to the preceding internal request ID. Never count a follow-up as an unrelated full task.
+- Add a new workload or task type when a materially distinct cost center appears; do not overload free-text trigger descriptions as the only attribution.
+- Cost reports must remain filterable by model, request role, workload, trigger, task type, task ID, time range, and tag, and must expose the highest-cost turns.
+- Legacy rows may be marked `legacy` or `other`; new requests must not be untagged. Review the largest cost rollups before optimizing token use so work targets measured offenders.
+
 ## Development mode: model calls are opt-in
 
 Development mode is the default whenever Codex is changing, debugging, or locally testing the project.

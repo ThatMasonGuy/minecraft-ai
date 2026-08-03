@@ -14,6 +14,8 @@ All notable changes to this project are recorded in this file.
 - Added durable planner/operator provenance to work orders and projects so operator test inputs cannot be presented as autonomous choices.
 - Added checksummed stopped-stack test-world snapshots and recoverable restores that preserve authentication and merge newer permanent API usage history.
 - Added configurable Compose host paths and a separate test-state environment template so evaluations do not mutate the long-lived world by default.
+- Added hierarchical API cost attribution with turn IDs, initial/follow-up roles, workload and trigger types, task IDs, arbitrary tags, combined report filters, and highest-cost turn ranking.
+- Added a high-level gathering delegation tool whose deterministic implementation selects source blocks, storage, and motor behavior.
 
 ### Changed
 
@@ -21,3 +23,4 @@ All notable changes to this project are recorded in this file.
 - Changed development planning to dry-run proposed tools by default, preventing action execution and paid continuations during prompt or task-generation tests; hosted web search is now opt-in.
 - Extended API usage events to record both requested and returned model identifiers plus reasoning effort.
 - Forced planner requests onto standard processing so recorded Luna estimates use an explicit service tier rather than an account-dependent default.
+- Removed coordinate-level actions and explicit blueprint authoring from the planner tool surface; unsupported broad goals now wait for deterministic compiler support instead of being micromanaged by the model.

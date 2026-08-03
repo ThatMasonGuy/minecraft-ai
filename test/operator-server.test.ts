@@ -49,6 +49,46 @@ describe("operator HTTP API", () => {
         lifetime: { calls: number };
       };
       expect(usage.lifetime.calls).toBe(0);
+
+      memory.recordApiUsage({
+        requestId: "follow-up-1",
+        occurredAt: "2026-08-03T12:00:00.000Z",
+        completedAt: "2026-08-03T12:00:01.000Z",
+        provider: "openai",
+        endpoint: "responses",
+        requestedModel: "gpt-5.6-luna",
+        responseModel: "gpt-5.6-luna",
+        serviceTier: "default",
+        phase: "tool continuation 1",
+        attribution: {
+          turnId: "turn-filter",
+          requestRole: "follow_up",
+          workloadType: "task_planning",
+          triggerSource: "operator",
+          taskType: "shelter",
+          tags: { evaluation: "nightly" }
+        },
+        status: "completed",
+        usage: { totalTokens: 100 },
+        webSearchCalls: 0
+      });
+      const filteredResponse = await fetch(
+        `${server.url}/api/operator/usage?requestRole=follow_up&workloadType=task_planning&tag=evaluation%3Dnightly`
+      );
+      const filtered = (await filteredResponse.json()) as {
+        filters: Record<string, string>;
+        lifetime: { calls: number };
+        topTurns: Array<{ turnId: string }>;
+      };
+      expect(filtered).toMatchObject({
+        filters: {
+          requestRole: "follow_up",
+          workloadType: "task_planning",
+          tag: "evaluation=nightly"
+        },
+        lifetime: { calls: 1 },
+        topTurns: [{ turnId: "turn-filter" }]
+      });
     } finally {
       await server.close();
       memory.close();
