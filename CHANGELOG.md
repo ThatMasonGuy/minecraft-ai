@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Made AcquisitionSystem report the actual higher-priority owner—combat, food provisioning, recovery, or storage—so ordinary work no longer claims it is avoiding threats while a different subsystem is active.
 - Aligned food-animal sensing with CombatSystem's real pursuit boundary and made proximity outweigh species yield, preventing impossible distant hunts from generating endless zero-swing combat restarts while nearer food is ignored.
 - Made AcquisitionSystem run targeted visibility checks for requested blocks, return to remembered resource sites before blind exploration, clear visible leaf and vine obstructions through MiningSystem, and contain unreachable-block approach failures as retryable outcomes.
 - Made shared Pathfinder routing strongly prefer dry ground, disabled parkour in surface searches, and expanded escape destinations across nearby elevations so water and uneven terrain no longer collapse evasion into same-level stop/replan loops.

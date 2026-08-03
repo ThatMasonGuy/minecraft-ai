@@ -38,6 +38,32 @@ describe("matchesGatherSource", () => {
 });
 
 describe("resource-site reuse", () => {
+  it("reports the real subsystem that preempted ordinary work", async () => {
+    const activity = vi.fn();
+    const system = new AcquisitionSystem(
+      {
+        activeWorkOrder: vi.fn(() => ({ id: 79 }))
+      } as never,
+      { record: vi.fn(), activity } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      1_000,
+      vi.fn(),
+      () => "food provisioning"
+    );
+
+    await (system as unknown as { tick(): Promise<void> }).tick();
+
+    expect(activity).toHaveBeenCalledWith("acquisition", {
+      phase: "waiting",
+      label: "Work paused for food provisioning",
+      detail: "Work order 79 will resume when food provisioning finishes"
+    });
+  });
+
   it("returns to a remembered tree and clears visible canopy before blind search", async () => {
     const order = {
       id: 79,

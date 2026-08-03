@@ -52,7 +52,7 @@ export class AcquisitionSystem {
     private readonly survival: SurvivalSystem,
     private readonly tickMs: number,
     private readonly requestReplan: (reason: string) => void,
-    private readonly shouldPauseForDefense?: () => boolean,
+    private readonly pauseReason?: () => string | undefined,
     private readonly execution?: ExecutionScope
   ) {}
 
@@ -91,11 +91,12 @@ export class AcquisitionSystem {
       this.reportActivity("idle", "No background work");
       return;
     }
-    if (this.shouldPauseForDefense?.()) {
+    const pauseReason = this.pauseReason?.();
+    if (pauseReason) {
       this.reportActivity(
         "waiting",
-        "Work paused for combat safety",
-        `Work order ${order.id} will resume when the threat passes`
+        `Work paused for ${pauseReason}`,
+        `Work order ${order.id} will resume when ${pauseReason} finishes`
       );
       return;
     }

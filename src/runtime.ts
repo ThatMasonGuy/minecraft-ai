@@ -313,11 +313,13 @@ export class MinecraftRuntime {
             triggerSource: "executor",
             taskType: "work_order"
           }),
-        () =>
-          (this.combatSystem?.isActive() ?? false) ||
-          (this.foodProvisioningSystem?.isActive() ?? false) ||
-          (this.recoverySystem?.isActive() ?? false) ||
-          (this.storageSystem?.isActive() ?? false),
+        () => {
+          if (this.combatSystem?.isActive()) return "combat safety";
+          if (this.foodProvisioningSystem?.isActive()) return "food provisioning";
+          if (this.recoverySystem?.isActive()) return "death-site recovery";
+          if (this.storageSystem?.isActive()) return "inventory storage";
+          return undefined;
+        },
         executionCoordinator.scope(
           "work",
           () => this.memory.activeWorkOrder() !== undefined
