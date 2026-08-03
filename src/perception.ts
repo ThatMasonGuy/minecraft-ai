@@ -2,12 +2,12 @@ import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type {
-  InventoryEntry,
   PerceptionSnapshot,
   Position,
   VisibleBlock,
   VisibleEntity
 } from "./types.js";
+import type { InventorySystem } from "./inventory-system.js";
 
 export type SensedBlock = NonNullable<ReturnType<Bot["blockAt"]>>;
 
@@ -32,7 +32,8 @@ export class MineflayerSensingSystem implements SensingSystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly maxDistance: number
+    private readonly maxDistance: number,
+    private readonly inventory: InventorySystem
   ) {}
 
   observe(): PerceptionSnapshot {
@@ -49,8 +50,8 @@ export class MineflayerSensingSystem implements SensingSystem {
       oxygen: this.bot.oxygenLevel,
       isRaining: this.bot.isRaining,
       timeOfDay: this.bot.time.timeOfDay,
-      inventory: inventorySnapshot(this.bot),
-      emptyInventorySlots: this.bot.inventory.emptySlotCount(),
+      inventory: this.inventory.snapshot(),
+      emptyInventorySlots: this.inventory.emptySlots(),
       visibleBlocks: this.sampleVisibleBlocks(),
       visibleEntities: this.visibleEntities()
     };
@@ -234,13 +235,6 @@ export function resolveRaycastBlock(
   const position = new Vec3(value.x, value.y, value.z);
   const block = bot.blockAt(position);
   return block ? { name: block.name, position: block.position } : undefined;
-}
-
-function inventorySnapshot(bot: Bot): InventoryEntry[] {
-  return bot.inventory
-    .items()
-    .map((item) => ({ name: item.name, count: item.count, slot: item.slot }))
-    .sort((a, b) => a.slot - b.slot);
 }
 
 function roundPosition(position: Vec3): { x: number; y: number; z: number } {

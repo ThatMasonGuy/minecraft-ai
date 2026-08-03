@@ -17,6 +17,7 @@ import {
   type TraversalJournal
 } from "./navigation.js";
 import type { MovementSystem } from "./movement-system.js";
+import type { InventorySystem } from "./inventory-system.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
 import type {
   ActivityUpdate,
@@ -93,6 +94,7 @@ export class ProjectExecutor {
     private readonly perception: Perception,
     private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
+    private readonly inventory: InventorySystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -300,7 +302,7 @@ export class ProjectExecutor {
     step: ProjectStep,
     spec: Extract<ProjectStep["spec"], { kind: "acquire_item" }>
   ): Promise<void> {
-    const current = inventoryCount(this.bot, spec.itemName);
+    const current = this.inventory.count(spec.itemName);
     if (current >= spec.targetCount) {
       const state = step.state as AcquireState;
       if (state.workOrderId !== undefined) {
@@ -493,7 +495,7 @@ export class ProjectExecutor {
     step: ProjectStep,
     spec: Extract<ProjectStep["spec"], { kind: "craft_item" }>
   ): Promise<void> {
-    const current = inventoryCount(this.bot, spec.itemName);
+    const current = this.inventory.count(spec.itemName);
     if (current >= spec.targetCount) {
       this.finishStep(project, `Crafted ${current} ${spec.itemName}`);
       return;
@@ -626,7 +628,7 @@ export class ProjectExecutor {
   private async restoreCraftingTable(
     project: ProjectPlan
   ): Promise<ReturnType<Bot["blockAt"]> | undefined> {
-    let carried = this.bot.inventory
+    let carried = this.inventory
       .items()
       .find((item) => item.name === "crafting_table");
     if (!carried) {
@@ -636,7 +638,7 @@ export class ProjectExecutor {
         : undefined;
       if (recipe) {
         await this.bot.craft(recipe, 1);
-        carried = this.bot.inventory
+        carried = this.inventory
           .items()
           .find((item) => item.name === "crafting_table");
       }
@@ -696,7 +698,7 @@ export class ProjectExecutor {
         const ingredientName = this.bot.registry.items[ingredient.id]?.name;
         if (!ingredientName) continue;
         const required = Math.abs(ingredient.count) * executions;
-        const available = this.bot.inventory
+        const available = this.inventory
           .items()
           .filter((inventoryItem) => inventoryItem.type === ingredient.id)
           .reduce((total, inventoryItem) => total + inventoryItem.count, 0);
@@ -743,7 +745,7 @@ export class ProjectExecutor {
     _step: ProjectStep,
     spec: Extract<ProjectStep["spec"], { kind: "smelt_item" }>
   ): Promise<void> {
-    const current = inventoryCount(this.bot, spec.outputItemName);
+    const current = this.inventory.count(spec.outputItemName);
     if (current >= spec.targetCount) {
       this.finishStep(
         project,
@@ -754,7 +756,7 @@ export class ProjectExecutor {
     let furnaceBlock = this.blockAtRelative(project, spec.furnaceAt);
     if (
       (!furnaceBlock || furnaceBlock.name !== "furnace") &&
-      inventoryCount(this.bot, "furnace") > 0 &&
+      this.inventory.count("furnace") > 0 &&
       project.anchor
     ) {
       const placed = await this.placeCarriedUtilityBlock("furnace");
@@ -793,10 +795,10 @@ export class ProjectExecutor {
         return;
       }
 
-      const input = this.bot.inventory
+      const input = this.inventory
         .items()
         .find((item) => item.name === spec.inputItemName);
-      const fuel = this.bot.inventory
+      const fuel = this.inventory
         .items()
         .find((item) => item.name === spec.fuelItemName);
       if (!input) {
@@ -835,7 +837,7 @@ export class ProjectExecutor {
     step: ProjectStep,
     spec: Extract<ProjectStep["spec"], { kind: "prospect_resource" }>
   ): Promise<void> {
-    const count = inventoryCount(this.bot, spec.itemName);
+    const count = this.inventory.count(spec.itemName);
     if (count >= spec.targetCount) {
       this.finishStep(
         project,
@@ -1336,7 +1338,7 @@ export class ProjectExecutor {
   ): Promise<boolean> {
     if (
       this.bot.food >= 18 &&
-      safeFoodCount(this.bot) >= 3
+      safeFoodCount(this.inventory) >= 3
     ) {
       state.forageOrigin = undefined;
       state.forageWaypoint = undefined;
@@ -1417,7 +1419,7 @@ export class ProjectExecutor {
       this.report(
         "working",
         `Hunting visible ${target.name ?? "animal"} for food`,
-        `${safeFoodCount(this.bot)}/3 reserve items`
+        `${safeFoodCount(this.inventory)}/3 reserve items`
       );
       if (distance > 3.2) {
         await this.movement.goNear(target.position, 2, 12_000);
@@ -1429,14 +1431,14 @@ export class ProjectExecutor {
       ) {
         return true;
       }
-      const weapon = this.bot.inventory
+      const weapon = this.inventory
         .items()
         .filter(
           (item) =>
             item.name.endsWith("_sword") ||
             item.name.endsWith("_axe")
         )[0];
-      if (weapon) await this.bot.equip(weapon, "hand");
+      if (weapon) await this.inventory.equip(weapon, "hand");
       await this.movement.face(
         target.position.offset(
           0,
@@ -1530,8 +1532,8 @@ export class ProjectExecutor {
       }
       const tool =
         this.lowestSufficientPickaxe(block.name) ??
-        this.bot.pathfinder.bestHarvestTool(block);
-      if (tool) await this.bot.equip(tool, "hand");
+        this.inventory.bestHarvestTool(block);
+      if (tool) await this.inventory.equip(tool, "hand");
       await withTimeout(
         this.bot.dig(block),
         10_000,
@@ -1596,7 +1598,7 @@ export class ProjectExecutor {
       diamond_pickaxe: 3,
       netherite_pickaxe: 4
     };
-    return this.bot.inventory
+    return this.inventory
       .items()
       .filter(
         (item) =>
@@ -1607,7 +1609,7 @@ export class ProjectExecutor {
   }
 
   private async placeFloorTorch(position: Position): Promise<void> {
-    const torch = this.bot.inventory
+    const torch = this.inventory
       .items()
       .find((item) => item.name === "torch");
     if (!torch) return;
@@ -1622,7 +1624,7 @@ export class ProjectExecutor {
     ) {
       return;
     }
-    await this.bot.equip(torch, "hand");
+    await this.inventory.equip(torch, "hand");
     await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
   }
 
@@ -1657,7 +1659,7 @@ export class ProjectExecutor {
   }
 
   private hasPickaxe(): boolean {
-    return this.bot.inventory
+    return this.inventory
       .items()
       .some((item) => item.name.endsWith("_pickaxe"));
   }
@@ -1668,7 +1670,7 @@ export class ProjectExecutor {
     state: ProspectState,
     _heading: "north" | "south" | "east" | "west"
   ): Promise<EmergencyToolResult> {
-    if (inventoryCount(this.bot, "stick") < 2) {
+    if (this.inventory.count("stick") < 2) {
       const stick = this.bot.registry.itemsByName.stick;
       const recipe = stick
         ? this.bot.recipesFor(stick.id, null, 1, null)[0]
@@ -1676,8 +1678,8 @@ export class ProjectExecutor {
       if (recipe) await this.bot.craft(recipe, 1);
     }
     if (
-      inventoryCount(this.bot, "cobblestone") < 3 ||
-      inventoryCount(this.bot, "stick") < 2 ||
+      this.inventory.count("cobblestone") < 3 ||
+      this.inventory.count("stick") < 2 ||
       !state.surfaceOrigin
     ) {
       return "impossible";
@@ -1780,7 +1782,7 @@ export class ProjectExecutor {
   }
 
   private async installPortableCraftingTable() {
-    let tableItem = this.bot.inventory
+    let tableItem = this.inventory
       .items()
       .find((item) => item.name === "crafting_table");
     if (!tableItem) {
@@ -1789,7 +1791,7 @@ export class ProjectExecutor {
       const recipe = this.bot.recipesFor(table.id, null, 1, null)[0];
       if (!recipe) return undefined;
       await this.bot.craft(recipe, 1);
-      tableItem = this.bot.inventory
+      tableItem = this.inventory
         .items()
         .find((item) => item.name === "crafting_table");
     }
@@ -1819,7 +1821,7 @@ export class ProjectExecutor {
         continue;
       }
       try {
-        await this.bot.equip(tableItem, "hand");
+        await this.inventory.equip(tableItem, "hand");
         await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
       } catch {
         continue;
@@ -1847,7 +1849,7 @@ export class ProjectExecutor {
     const supportPosition = new Vec3(position.x, position.y, position.z);
     const existing = this.bot.blockAt(supportPosition);
     const floor = this.bot.blockAt(supportPosition.offset(0, -1, 0));
-    const cobblestone = this.bot.inventory
+    const cobblestone = this.inventory
       .items()
       .find((item) => item.name === "cobblestone");
     if (
@@ -1859,7 +1861,7 @@ export class ProjectExecutor {
     ) {
       return false;
     }
-    await this.bot.equip(cobblestone, "hand");
+    await this.inventory.equip(cobblestone, "hand");
     await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
     const landing = {
       x: position.x,
@@ -1901,7 +1903,7 @@ export class ProjectExecutor {
     project: ProjectPlan,
     spec: Extract<ProjectStep["spec"], { kind: "verify_inventory" }>
   ): void {
-    const count = inventoryCount(this.bot, spec.itemName);
+    const count = this.inventory.count(spec.itemName);
     if (count < spec.minimumCount) {
       this.blockProject(
         project,
@@ -1976,7 +1978,7 @@ export class ProjectExecutor {
     }
 
     this.perception.observe();
-    const before = inventoryCount(this.bot, spec.itemName);
+    const before = this.inventory.count(spec.itemName);
     if (before < spec.minimumCount - (state.deposited ?? 0)) {
       this.blockProject(
         project,
@@ -1999,7 +2001,7 @@ export class ProjectExecutor {
     }
     const deposited = Math.max(
       0,
-      before - inventoryCount(this.bot, spec.itemName)
+      before - this.inventory.count(spec.itemName)
     );
     if (deposited === 0) {
       throw new Error(`No ${spec.itemName} was transferred to storage`);
@@ -2101,7 +2103,7 @@ export class ProjectExecutor {
   }
 
   private async placeCarriedUtilityBlock(itemName: string) {
-    const item = this.bot.inventory
+    const item = this.inventory
       .items()
       .find((candidate) => candidate.name === itemName);
     if (!item) return undefined;
@@ -2123,7 +2125,7 @@ export class ProjectExecutor {
               continue;
             }
             try {
-              await this.bot.equip(item, "hand");
+              await this.inventory.equip(item, "hand");
               await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
             } catch {
               continue;
@@ -2182,11 +2184,11 @@ export class ProjectExecutor {
       { x: target.x, y: Math.min(target.y, anchor.y), z: target.z },
       3
     );
-    const item = this.bot.inventory
+    const item = this.inventory
       .items()
       .find((candidate) => candidate.name === placement.itemName);
     if (!item) throw new Error(`${placement.itemName} is missing`);
-    await this.bot.equip(item, "hand");
+    await this.inventory.equip(item, "hand");
     await this.movement.face(targetVector.offset(0.5, 0.5, 0.5));
     await this.bot.placeBlock(reference.block, reference.face);
     if (isStorageBlock(placement.itemName)) {
@@ -2344,13 +2346,6 @@ export class ProjectExecutor {
   }
 }
 
-function inventoryCount(bot: Bot, itemName: string): number {
-  return bot.inventory
-    .items()
-    .filter((item) => item.name === itemName)
-    .reduce((total, item) => total + item.count, 0);
-}
-
 function isStorageBlock(name: string): boolean {
   return name === "chest" || name === "trapped_chest" || name === "barrel";
 }
@@ -2389,7 +2384,7 @@ export function foodAnimalPriority(name: string): number {
   }
 }
 
-function safeFoodCount(bot: Bot): number {
+function safeFoodCount(inventory: InventorySystem): number {
   const banned = new Set([
     "chorus_fruit",
     "poisonous_potato",
@@ -2397,14 +2392,7 @@ function safeFoodCount(bot: Bot): number {
     "rotten_flesh",
     "spider_eye"
   ]);
-  return bot.inventory.items().reduce(
-    (total, item) =>
-      !banned.has(item.name) &&
-      bot.registry.foodsByName[item.name]
-        ? total + item.count
-        : total,
-    0
-  );
+  return inventory.foodCount(banned);
 }
 
 function isSolid(

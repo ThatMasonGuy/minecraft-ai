@@ -3,6 +3,7 @@ import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type { Position } from "./types.js";
+import type { InventorySystem } from "./inventory-system.js";
 
 const require = createRequire(import.meta.url);
 const { goals, Movements } = require(
@@ -98,7 +99,10 @@ export class PathfinderMovementSystem implements MovementSystem {
   private targetKey?: string;
   private lastEscapePlanAt = 0;
 
-  constructor(private readonly bot: Bot) {}
+  constructor(
+    private readonly bot: Bot,
+    private readonly inventory: InventorySystem
+  ) {}
 
   configureBase(): void {
     const movements = new Movements(this.bot);
@@ -424,9 +428,9 @@ export class PathfinderMovementSystem implements MovementSystem {
     const support = this.bot.blockAt(currentVector.offset(0, -1, 0));
     const targetBlock = this.bot.blockAt(new Vec3(target.x, target.y, target.z));
     const headBlock = this.bot.blockAt(new Vec3(target.x, target.y + 1, target.z));
-    const scaffold = this.bot.inventory
-      .items()
-      .find((item) => item.name === "dirt" || item.name === "cobblestone");
+    const scaffold = this.inventory.findFirst(
+      (item) => item.name === "dirt" || item.name === "cobblestone"
+    );
     if (
       !support ||
       support.boundingBox === "empty" ||
@@ -440,7 +444,7 @@ export class PathfinderMovementSystem implements MovementSystem {
     }
 
     this.hold();
-    await this.bot.equip(scaffold, "hand");
+    await this.inventory.equip(scaffold, "hand");
     await this.bot.lookAt(support.position.offset(0.5, 1, 0.5), true);
     this.bot.setControlState("jump", true);
     try {

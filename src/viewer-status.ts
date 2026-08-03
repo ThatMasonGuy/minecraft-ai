@@ -1,4 +1,5 @@
 import type { Bot } from "mineflayer";
+import type { InventorySystem } from "./inventory-system.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { ActivityUpdate, Goal, WorkOrder } from "./types.js";
 
@@ -103,7 +104,11 @@ export class ViewerStatusStore {
     this.combat = normalize(update, this.combat);
   }
 
-  snapshot(memory: EpisodicMemory, bot?: Bot): ViewerSnapshot {
+  snapshot(
+    memory: EpisodicMemory,
+    bot?: Bot,
+    inventorySystem?: InventorySystem
+  ): ViewerSnapshot {
     const goals = memory.activeGoals();
     const workOrder = memory.activeWorkOrder();
     const project = memory.activeProject();
@@ -139,7 +144,10 @@ export class ViewerStatusStore {
       project: project
         ? projectSnapshot(project)
         : undefined,
-      player: bot?.entity ? playerSnapshot(bot) : undefined
+      player:
+        bot?.entity && inventorySystem
+          ? playerSnapshot(bot, inventorySystem)
+          : undefined
     };
   }
 }
@@ -183,14 +191,12 @@ export function selectPrimaryGoal(
   return goals[0];
 }
 
-function playerSnapshot(bot: Bot): NonNullable<ViewerSnapshot["player"]> {
-  const inventory = inventorySnapshot(bot);
-  const hotbar = Array.from({ length: 9 }, (_, slot): HotbarItem => {
-    return itemSnapshot(
-      bot.inventory.slots[bot.inventory.hotbarStart + slot],
-      slot
-    );
-  });
+function playerSnapshot(
+  bot: Bot,
+  inventorySystem: InventorySystem
+): NonNullable<ViewerSnapshot["player"]> {
+  const inventory = inventorySnapshot(inventorySystem);
+  const hotbar = inventory.hotbar;
 
   return {
     username: bot.username,
@@ -215,25 +221,16 @@ function playerSnapshot(bot: Bot): NonNullable<ViewerSnapshot["player"]> {
   };
 }
 
-function inventorySnapshot(bot: Bot): PlayerInventory {
-  const { inventory } = bot;
-  const main = Array.from(
-    { length: inventory.hotbarStart - inventory.inventoryStart },
-    (_, index) =>
-      itemSnapshot(
-        inventory.slots[inventory.inventoryStart + index],
-        index
-      )
-  );
-  const hotbar = Array.from({ length: 9 }, (_, slot): HotbarItem =>
-    itemSnapshot(inventory.slots[inventory.hotbarStart + slot], slot)
-  );
+function inventorySnapshot(inventorySystem: InventorySystem): PlayerInventory {
+  const layout = inventorySystem.layout();
+  const main = layout.main.map((item, index) => itemSnapshot(item, index));
+  const hotbar = layout.hotbar.map((item, slot) => itemSnapshot(item, slot));
   const equipment = {
-    head: itemSnapshot(inventory.slots[5], 5),
-    chest: itemSnapshot(inventory.slots[6], 6),
-    legs: itemSnapshot(inventory.slots[7], 7),
-    feet: itemSnapshot(inventory.slots[8], 8),
-    offhand: itemSnapshot(inventory.slots[45], 45)
+    head: itemSnapshot(layout.equipment.head, 5),
+    chest: itemSnapshot(layout.equipment.chest, 6),
+    legs: itemSnapshot(layout.equipment.legs, 7),
+    feet: itemSnapshot(layout.equipment.feet, 8),
+    offhand: itemSnapshot(layout.equipment.offhand, 45)
   };
   const occupied = [...main, ...hotbar, ...Object.values(equipment)].filter(
     (item) => item.name
@@ -249,7 +246,7 @@ function inventorySnapshot(bot: Bot): PlayerInventory {
 }
 
 function itemSnapshot(
-  item: Bot["inventory"]["slots"][number] | undefined,
+  item: ReturnType<InventorySystem["items"]>[number] | undefined,
   slot: number
 ): InventoryItem {
   return item

@@ -40,7 +40,10 @@ describe("resolveRaycastBlock", () => {
       blockAt: vi.fn(() => block),
       canSeeBlock: vi.fn(() => true)
     };
-    const perception = new Perception(bot as never, 32);
+    const perception = new Perception(bot as never, 32, {
+      snapshot: () => [],
+      emptySlots: () => 36
+    } as never);
 
     expect(perception.inspectVisibleBlock(4, 70, -9)).toMatchObject({
       name: "oak_log",

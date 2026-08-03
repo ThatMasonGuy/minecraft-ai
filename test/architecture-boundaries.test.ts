@@ -66,4 +66,30 @@ describe("enclosed subsystem boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("keeps carried inventory reads and mutations in inventory", () => {
+    const allowed = new Set([path.join(SOURCE_ROOT, "inventory-system.ts")]);
+    const forbidden = [
+      /(?:this\.)?bot\.inventory/,
+      /(?:this\.)?bot\.equip\s*\(/,
+      /(?:this\.)?bot\.consume\s*\(/,
+      /(?:this\.)?bot\.heldItem/,
+      /(?:this\.)?bot\.pathfinder\.bestHarvestTool\s*\(/
+    ];
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            forbidden.some((pattern) => pattern.test(line))
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
 });

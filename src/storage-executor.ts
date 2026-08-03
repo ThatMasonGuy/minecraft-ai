@@ -4,6 +4,7 @@ import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { ActivityUpdate, OwnedContainer, ProjectPlan } from "./types.js";
 import type { MovementSystem } from "./movement-system.js";
+import type { InventorySystem } from "./inventory-system.js";
 
 const INVENTORY_PRESSURE_SLOTS = 2;
 
@@ -17,6 +18,7 @@ export class StorageExecutor {
     private readonly memory: EpisodicMemory,
     private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
+    private readonly inventory: InventorySystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPause?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -47,14 +49,14 @@ export class StorageExecutor {
 
   private async tick(): Promise<void> {
     if (this.running || this.shouldPause?.() || !this.bot.entity) return;
-    const emptySlots = this.bot.inventory.emptySlotCount();
+    const emptySlots = this.inventory.emptySlots();
     if (emptySlots > INVENTORY_PRESSURE_SLOTS) {
       this.active = false;
       return;
     }
 
     const candidates = storageCandidates(
-      this.bot,
+      this.inventory,
       this.memory.activeProject(),
       this.memory.activeWorkOrder()?.spec.itemName
     );
@@ -91,7 +93,7 @@ export class StorageExecutor {
         "Storing inventory",
         `${candidate.count} ${candidate.name.replaceAll("_", " ")}`
       );
-      const before = inventoryCount(this.bot, candidate.name);
+      const before = this.inventory.count(candidate.name);
       const result = await this.actions.execute("deposit_item_in_container", {
         x: container.position.x,
         y: container.position.y,
@@ -100,7 +102,7 @@ export class StorageExecutor {
       });
       const deposited = Math.max(
         0,
-        before - inventoryCount(this.bot, candidate.name)
+        before - this.inventory.count(candidate.name)
       );
       if (deposited > 0) {
         this.memory.recordContainerDeposit(
@@ -139,15 +141,15 @@ export class StorageExecutor {
 }
 
 function storageCandidates(
-  bot: Bot,
+  inventory: InventorySystem,
   project: ProjectPlan | undefined,
   activeWorkItem?: string
 ): Array<{ name: string; count: number }> {
   const reserved = projectReservedItems(project);
   if (activeWorkItem) reserved.add(activeWorkItem);
   const counts = new Map<string, number>();
-  for (const item of bot.inventory.items()) {
-    if (reserved.has(item.name) || isEssential(bot, item.name)) continue;
+  for (const item of inventory.items()) {
+    if (reserved.has(item.name) || isEssential(inventory, item.name)) continue;
     counts.set(item.name, (counts.get(item.name) ?? 0) + item.count);
   }
   return [...counts.entries()]
@@ -174,7 +176,7 @@ function projectReservedItems(project: ProjectPlan | undefined): Set<string> {
   return reserved;
 }
 
-function isEssential(bot: Bot, name: string): boolean {
+function isEssential(inventory: InventorySystem, name: string): boolean {
   if (
     /(?:sword|pickaxe|axe|shovel|hoe|bow|crossbow|shield|helmet|chestplate|leggings|boots)$/.test(
       name
@@ -182,10 +184,7 @@ function isEssential(bot: Bot, name: string): boolean {
   ) {
     return true;
   }
-  const registry = bot.registry as typeof bot.registry & {
-    foodsByName?: Record<string, unknown>;
-  };
-  return Boolean(registry.foodsByName?.[name]);
+  return inventory.isFood(name);
 }
 
 function nearestContainer(
@@ -197,13 +196,6 @@ function nearestContainer(
       distanceBetween(bot.entity.position, a.position) -
       distanceBetween(bot.entity.position, b.position)
   )[0];
-}
-
-function inventoryCount(bot: Bot, itemName: string): number {
-  return bot.inventory
-    .items()
-    .filter((item) => item.name === itemName)
-    .reduce((total, item) => total + item.count, 0);
 }
 
 function distanceBetween(

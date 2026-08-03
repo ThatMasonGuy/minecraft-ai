@@ -8,6 +8,10 @@ import { AutonomousAgent } from "./agent.js";
 import { CombatSystem } from "./combat-system.js";
 import { config } from "./config.js";
 import { ExecutionCoordinator } from "./execution-coordinator.js";
+import {
+  MineflayerInventorySystem,
+  type InventorySystem
+} from "./inventory-system.js";
 import type { EpisodicMemory } from "./memory.js";
 import { PathfinderMovementSystem } from "./movement-system.js";
 import { Perception } from "./perception.js";
@@ -44,6 +48,7 @@ export class MinecraftRuntime {
   private recoveryExecutor?: RecoveryExecutor;
   private storageExecutor?: StorageExecutor;
   private executionCoordinator?: ExecutionCoordinator;
+  private inventorySystem?: InventorySystem;
   private reconnectTimer?: NodeJS.Timeout;
   private viewer?: ViewerServer;
   private operator?: OperatorServer;
@@ -107,9 +112,15 @@ export class MinecraftRuntime {
 
   private attachLifecycle(bot: Bot): void {
     bot.once("spawn", async () => {
-      const movementSystem = new PathfinderMovementSystem(bot);
+      const inventorySystem = new MineflayerInventorySystem(bot);
+      this.inventorySystem = inventorySystem;
+      const movementSystem = new PathfinderMovementSystem(bot, inventorySystem);
       movementSystem.configureBase();
-      const perception = new Perception(bot, config.perceptionDistance);
+      const perception = new Perception(
+        bot,
+        config.perceptionDistance,
+        inventorySystem
+      );
       const executionCoordinator = new ExecutionCoordinator(bot);
       this.executionCoordinator = executionCoordinator;
       bot.autoEat.setOpts({
@@ -138,6 +149,7 @@ export class MinecraftRuntime {
         this.memory,
         movementSystem,
         perception,
+        inventorySystem,
         (activity) => this.viewerStatus.setCombat(activity),
         executionCoordinator.scope(
           "combat",
@@ -152,7 +164,8 @@ export class MinecraftRuntime {
           viewDistance: config.viewerDistance,
           maxFps: config.viewerMaxFps,
           maxPixelRatio: config.viewerMaxPixelRatio,
-          status: () => this.viewerStatus.snapshot(this.memory, this.bot)
+          status: () =>
+            this.viewerStatus.snapshot(this.memory, this.bot, inventorySystem)
         });
       }
       await bot.waitForChunksToLoad();
@@ -167,6 +180,7 @@ export class MinecraftRuntime {
         this.memory,
         perception,
         movementSystem,
+        inventorySystem,
         config.maxMoveDistance
       );
       this.recoveryExecutor = new RecoveryExecutor(
@@ -175,6 +189,7 @@ export class MinecraftRuntime {
         actions,
         movementSystem,
         perception,
+        inventorySystem,
         (activity) => this.viewerStatus.setWork(activity),
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
@@ -188,6 +203,7 @@ export class MinecraftRuntime {
         this.memory,
         actions,
         movementSystem,
+        inventorySystem,
         (activity) => this.viewerStatus.setWork(activity),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
@@ -216,11 +232,7 @@ export class MinecraftRuntime {
       if (config.operatorEnabled) {
         const control = new OperatorControl({
           memory: this.memory,
-          inventoryCount: (itemName) =>
-            bot.inventory
-              .items()
-              .filter((item) => item.name === itemName)
-              .reduce((total, item) => total + item.count, 0),
+          inventoryCount: (itemName) => inventorySystem.count(itemName),
           requestPlanning: (task, attribution) =>
             this.agent?.wake(task, attribution),
           plannerMode: config.plannerMode,
@@ -282,6 +294,7 @@ export class MinecraftRuntime {
         perception,
         actions,
         movementSystem,
+        inventorySystem,
         config.workExecutorTickMs,
         (activity) => {
           if (
@@ -410,7 +423,9 @@ export class MinecraftRuntime {
     });
 
     bot.on("health", () => {
-      const livingInventory = aggregateInventory(bot);
+      const livingInventory = this.inventorySystem
+        ? aggregateInventory(this.inventorySystem)
+        : [];
       if (bot.health > 0 && livingInventory.length > 0) {
         this.lastLivingInventory = livingInventory;
       }
@@ -438,7 +453,9 @@ export class MinecraftRuntime {
       const dimension = bot.game?.dimension
         ? String(bot.game.dimension)
         : undefined;
-      const currentItems = aggregateInventory(bot);
+      const currentItems = this.inventorySystem
+        ? aggregateInventory(this.inventorySystem)
+        : [];
       const expectedItems =
         currentItems.length > 0 ? currentItems : this.lastLivingInventory;
       this.memory.record({
@@ -576,9 +593,11 @@ function toPosition(position: { x: number; y: number; z: number }) {
   };
 }
 
-function aggregateInventory(bot: Bot): Array<{ name: string; count: number }> {
+function aggregateInventory(
+  inventory: InventorySystem
+): Array<{ name: string; count: number }> {
   const totals = new Map<string, number>();
-  for (const item of bot.inventory.items()) {
+  for (const item of inventory.items()) {
     totals.set(item.name, (totals.get(item.name) ?? 0) + item.count);
   }
   return [...totals.entries()].map(([name, count]) => ({ name, count }));

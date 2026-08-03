@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Centralized carried-item inspection, equipment, consumption, tool selection, capacity, food classification, full inventory layout, and cross-system item reservations behind InventorySystem.
 - Defined a shared sensing-system contract for perception snapshots, visible entity resolution, loaded block inspection, and line-of-sight checks; combat, recovery, projects, and deterministic actions no longer maintain separate entity-visibility queries.
 - Consolidated Pathfinder goals, route timeouts, exact-cell traversal, direct control, orientation, and escape routing behind the shared movement-system API; deterministic consumers no longer implement their own locomotion.
 - Replaced the coupled self-defence executor with an enclosed combat system that owns encounter policy, equipment, server-tick attack cadence, strike spacing, shields, recovery, loot, and encounter telemetry while delegating every route to the shared movement system.
@@ -19,6 +20,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added deterministic inventory reservation coverage and architecture enforcement that rejects raw carried-inventory access outside InventorySystem.
 - Added an architecture boundary test that rejects locomotion, orientation, and control-state mutations outside the movement subsystem.
 - Added deterministic combat policy coverage for unarmed, ranged, explosive, multi-hostile, weapon-selection, cooldown, and repeated-player-aggression behavior.
 - Added a shared movement-system interface with reusable follow, approach, hold, and multi-threat escape routing outcomes for deterministic subsystems.

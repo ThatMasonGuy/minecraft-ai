@@ -17,6 +17,7 @@ import type {
 } from "./movement-system.js";
 import type { ActivityUpdate, Position } from "./types.js";
 import type { SensingSystem } from "./perception.js";
+import type { InventorySystem } from "./inventory-system.js";
 
 const ATTACK_RANGE = 3.15;
 const FOLLOW_RANGE = 2.7;
@@ -126,6 +127,7 @@ export class CombatSystem {
     private readonly memory: EpisodicMemory,
     private readonly movement: CombatMovementSystem,
     private readonly sensing: SensingSystem,
+    private readonly inventory: InventorySystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly execution?: ExecutionScope
   ) {}
@@ -630,30 +632,30 @@ export class CombatSystem {
   }
 
   private assess(target: Entity, threats: Entity[]): CombatDecision {
-    const weapon = selectBestWeapon(this.bot.inventory.items());
+    const weapon = selectBestWeapon(this.inventory.items());
     return decideCombat({
       targetName: normalizedEntityName(target),
       health: this.bot.health,
-      armorPieces: equippedArmorPieces(this.bot),
+      armorPieces: equippedArmorPieces(this.inventory),
       nearbyHostiles: threats.filter(
         (entity) => this.bot.entity.position.distanceTo(entity.position) <= 8
       ).length,
       weaponName: weapon?.name,
-      hasShield: hasInventoryItem(this.bot, "shield")
+      hasShield: hasInventoryItem(this.inventory, "shield")
     });
   }
 
   private async prepareToFight(): Promise<void> {
     this.bot.autoEat?.disableAuto();
     this.bot.autoEat?.cancelEat();
-    const weapon = selectBestWeapon(this.bot.inventory.items());
+    const weapon = selectBestWeapon(this.inventory.items());
     if (!weapon) return;
-    if (this.bot.heldItem?.name !== weapon.name) {
-      await this.bot.equip(weapon, "hand");
+    if (this.inventory.heldItem()?.name !== weapon.name) {
+      await this.inventory.equip(weapon, "hand");
     }
-    const shield = this.bot.inventory.items().find((item) => item.name === "shield");
+    const shield = this.inventory.find("shield");
     if (shield && !this.hasEquippedShield()) {
-      await this.bot.equip(shield, "off-hand");
+      await this.inventory.equip(shield, "off-hand");
     }
     if (this.encounter) this.encounter.weaponName = weapon.name;
   }
@@ -675,7 +677,7 @@ export class CombatSystem {
     this.bot.attack(target);
     this.lastSwingAt = Date.now();
     this.lastContactAt = this.lastSwingAt;
-    const weaponName = this.bot.heldItem?.name;
+    const weaponName = this.inventory.heldItem()?.name;
     this.nextAttackAt = this.lastSwingAt + attackCooldownMs(weaponName);
     if (this.encounter) {
       this.encounter.swings += 1;
@@ -731,7 +733,8 @@ export class CombatSystem {
     );
     this.bot.attack(threat);
     this.lastSwingAt = Date.now();
-    this.nextAttackAt = this.lastSwingAt + attackCooldownMs(this.bot.heldItem?.name);
+    this.nextAttackAt =
+      this.lastSwingAt + attackCooldownMs(this.inventory.heldItem()?.name);
     if (this.encounter) this.encounter.swings += 1;
   }
 
@@ -809,12 +812,7 @@ export class CombatSystem {
   }
 
   private hasEquippedShield(): boolean {
-    try {
-      const slot = this.bot.getEquipmentDestSlot("off-hand");
-      return this.bot.inventory.slots[slot]?.name === "shield";
-    } catch {
-      return false;
-    }
+    return this.inventory.equipment("off-hand")?.name === "shield";
   }
 
   private expirePlayerHitRecords(): void {
@@ -909,25 +907,14 @@ function weaponProfile(name: string | undefined): WeaponProfile | undefined {
   return { damage, speed, score: damage * speed };
 }
 
-function equippedArmorPieces(bot: Bot): number {
-  return ["head", "torso", "legs", "feet"].filter((destination) => {
-    try {
-      const slot = bot.getEquipmentDestSlot(destination as "head");
-      return Boolean(bot.inventory.slots[slot]);
-    } catch {
-      return false;
-    }
-  }).length;
+function equippedArmorPieces(inventory: InventorySystem): number {
+  return (["head", "torso", "legs", "feet"] as const).filter(
+    (destination) => Boolean(inventory.equipment(destination))
+  ).length;
 }
 
-function hasInventoryItem(bot: Bot, name: string): boolean {
-  if (bot.inventory.items().some((item) => item.name === name)) return true;
-  try {
-    const slot = bot.getEquipmentDestSlot("off-hand");
-    return bot.inventory.slots[slot]?.name === name;
-  } catch {
-    return false;
-  }
+function hasInventoryItem(inventory: InventorySystem, name: string): boolean {
+  return Boolean(inventory.find(name) || inventory.equipment("off-hand")?.name === name);
 }
 
 function threatAcquisitionRange(name: string): number {

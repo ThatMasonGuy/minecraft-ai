@@ -161,11 +161,19 @@ describe("player aggression escape", () => {
       visibleEntitiesRaw: () => [player],
       hasLineOfSight: () => true
     };
+    const inventory = {
+      items: () => [],
+      find: () => undefined,
+      heldItem: () => undefined,
+      equipment: () => undefined,
+      equip: vi.fn(async () => false)
+    };
     const combat = new CombatSystem(
       bot as never,
       memory as never,
       movement,
-      sensing as never
+      sensing as never,
+      inventory as never
     );
     combat.start();
 
@@ -245,6 +253,13 @@ describe("enclosed combat movement", () => {
       {
         visibleEntitiesRaw: () => [zombie],
         hasLineOfSight: () => true
+      } as never,
+      {
+        items: () => [weapon],
+        find: () => undefined,
+        heldItem: () => weapon,
+        equipment: () => undefined,
+        equip: vi.fn(async () => true)
       } as never
     );
     combat.start();

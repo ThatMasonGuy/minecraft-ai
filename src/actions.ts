@@ -11,6 +11,7 @@ import {
   isCurrentSupportBlock
 } from "./navigation.js";
 import type { MovementSystem } from "./movement-system.js";
+import type { InventorySystem } from "./inventory-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -29,6 +30,7 @@ export class MinecraftActions {
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
     private readonly movement: MovementSystem,
+    private readonly inventory: InventorySystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -370,7 +372,7 @@ export class MinecraftActions {
             return fail("The configured storage container is not currently visible");
           }
         }
-        const initialCount = inventoryCount(this.bot, args.item_name);
+        const initialCount = this.inventory.count(args.item_name);
         const order = this.memory.createGatherBlocksWorkOrder({
           goalId: args.goal_id === 0 ? undefined : args.goal_id,
           itemName: args.item_name,
@@ -404,7 +406,7 @@ export class MinecraftActions {
               position: ownedStorage.position
             }
           : { mode: "inventory" as const };
-        const initialCount = inventoryCount(this.bot, args.item_name);
+        const initialCount = this.inventory.count(args.item_name);
         const order = this.memory.createGatherBlocksWorkOrder(
           {
             goalId: args.goal_id === 0 ? undefined : args.goal_id,
@@ -541,8 +543,8 @@ export class MinecraftActions {
     if (!block || block.name === "air") return fail("The observed block is no longer there");
     if (!this.perception.canSeeBlock(block)) return fail("The block is no longer in line of sight");
     if (!this.bot.canDigBlock(block)) return fail(`Cannot dig ${block.name} from here`);
-    const tool = this.bot.pathfinder.bestHarvestTool(block);
-    if (tool) await this.bot.equip(tool, "hand");
+    const tool = this.inventory.bestHarvestTool(block);
+    if (tool) await this.inventory.equip(tool, "hand");
     await withTimeout(
       this.bot.dig(block),
       10_000,
@@ -587,7 +589,7 @@ export class MinecraftActions {
     ) {
       return fail("The reference block is not in the latest line-of-sight observation");
     }
-    const item = this.bot.inventory.items().find((entry) => entry.name === args.item_name);
+    const item = this.inventory.find(args.item_name);
     if (!item) return fail(`${args.item_name} is not in inventory`);
     const referencePosition = new Vec3(
       args.reference_x,
@@ -603,7 +605,7 @@ export class MinecraftActions {
     if (!reference || !this.perception.canSeeBlock(reference)) {
       return fail("The reference block is no longer visible");
     }
-    await this.bot.equip(item, "hand");
+    await this.inventory.equip(item, "hand");
     await this.bot.placeBlock(
       reference,
       new Vec3(args.face_x, args.face_y, args.face_z)
@@ -629,18 +631,17 @@ export class MinecraftActions {
         destination: z.enum(["hand", "off-hand", "head", "torso", "legs", "feet"])
       })
       .parse(raw);
-    const item = this.bot.inventory.items().find((entry) => entry.name === args.item_name);
+    const item = this.inventory.find(args.item_name);
     if (!item) return fail(`${args.item_name} is not in inventory`);
-    await this.bot.equip(item, args.destination);
+    await this.inventory.equip(item, args.destination);
     return ok(`Equipped ${args.item_name} to ${args.destination}`);
   }
 
   private async consume(raw: unknown): Promise<ActionResult> {
     const { item_name } = z.object({ item_name: z.string().min(1) }).parse(raw);
-    const item = this.bot.inventory.items().find((entry) => entry.name === item_name);
+    const item = this.inventory.find(item_name);
     if (!item) return fail(`${item_name} is not in inventory`);
-    await this.bot.equip(item, "hand");
-    await this.bot.consume();
+    await this.inventory.consume(item_name);
     return ok(`Consumed ${item_name}`, this.perception.observe());
   }
 
@@ -726,7 +727,7 @@ export class MinecraftActions {
     if (!visible || !isStorageBlock(visible.name)) {
       return fail("The storage container is not currently visible");
     }
-    const stacks = this.bot.inventory
+    const stacks = this.inventory
       .items()
       .filter((item) => item.name === args.item_name);
     if (stacks.length === 0) return ok(`No ${args.item_name} to deposit`);
@@ -920,13 +921,6 @@ function fail(message: string): ActionResult {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function inventoryCount(bot: Bot, itemName: string): number {
-  return bot.inventory
-    .items()
-    .filter((item) => item.name === itemName)
-    .reduce((sum, item) => sum + item.count, 0);
 }
 
 function isStorageBlock(name: string): boolean {

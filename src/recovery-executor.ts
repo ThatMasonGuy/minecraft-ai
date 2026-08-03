@@ -13,6 +13,7 @@ import type {
 import { isDroppedItemEntity } from "./entity-classification.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
+import type { InventorySystem } from "./inventory-system.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -52,6 +53,7 @@ export class RecoveryExecutor {
     private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
     private readonly sensing: SensingSystem,
+    private readonly inventory: InventorySystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -124,7 +126,7 @@ export class RecoveryExecutor {
     const onKnownUndergroundRoute =
       !recoveryRoute.surfaceOnly;
     if (
-      this.bot.inventory.items().length === 0 &&
+      this.inventory.items().length === 0 &&
       this.bot.entity.position.y >= 50 &&
       timeOfDay >= 13_000 &&
       timeOfDay < 23_000 &&
@@ -250,7 +252,7 @@ export class RecoveryExecutor {
   }
 
   private async prepareRecoveryLoadout(): Promise<boolean> {
-    const hasWeapon = this.bot.inventory
+    const hasWeapon = this.inventory
       .items()
       .some(
         (item) =>
@@ -306,7 +308,7 @@ export class RecoveryExecutor {
   ): boolean {
     const isWeapon = (name: string) =>
       name.endsWith("_sword") || name.endsWith("_axe");
-    if (this.bot.inventory.items().some((item) => isWeapon(item.name))) {
+    if (this.inventory.items().some((item) => isWeapon(item.name))) {
       return true;
     }
     if (
@@ -466,7 +468,7 @@ export class RecoveryExecutor {
           step &&
           project.statusReason?.includes("no pickaxe")
         ) {
-          const recoveredPickaxe = this.bot.inventory
+          const recoveredPickaxe = this.inventory
             .items()
             .some((item) => item.name.endsWith("_pickaxe"));
           if (recoveredPickaxe) {
