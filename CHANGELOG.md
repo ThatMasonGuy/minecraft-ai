@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Routed build-site excavation drops through LootingSystem with persisted collection sessions, so site preparation drains mined blocks before continuing instead of abandoning most drops in the cleared area.
 - Made build-site selection terrain-aware across nearby elevations, separated future excavation feasibility from Mineflayer's current five-block reach check, and kept temporarily unavailable site scans active instead of terminally blocking the project; legacy false site blocks now recover automatically.
 - Added an explicit, ledger-tagged operator-only cooldown bypass for deliberate live evaluations while preserving the normal minimum interval for automatic and untagged planner requests.
 - Forced explicitly tagged shelter and house planning requests onto the high-level house-design tool so an initial paid call cannot be consumed by chat before creating deterministic work.

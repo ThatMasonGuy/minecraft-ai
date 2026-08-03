@@ -316,6 +316,7 @@ export class MinecraftRuntime {
         storageSystem,
         survivalSystem,
         combatSystem,
+        lootingSystem,
         config.workExecutorTickMs,
         (status, project) =>
           this.agent?.wakeAutomatically(

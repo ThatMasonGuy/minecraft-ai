@@ -23,6 +23,7 @@ import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
 import type { CombatSystem } from "./combat-system.js";
+import type { LootingSystem } from "./looting-system.js";
 import type { TaskLifecycle } from "./task-lifecycle.js";
 import {
   isProtectedExcavationBlockName,
@@ -49,6 +50,7 @@ interface SurveyState {
   preparedBlocks?: number;
   rejectedCandidates?: string[];
   scanFailures?: number;
+  lootPending?: boolean;
 }
 
 interface AcquireState {
@@ -106,6 +108,7 @@ export class ProjectSystem {
     private readonly storage: StorageSystem,
     private readonly survival: SurvivalSystem,
     private readonly combat: CombatSystem,
+    private readonly looting: LootingSystem,
     private readonly tickMs: number,
     private readonly onTerminal?: (
       status: "completed" | "blocked",
@@ -306,6 +309,28 @@ export class ProjectSystem {
       );
     }
 
+    const lootSessionId = `project-site:${project.id}`;
+    if (state.lootPending && state.candidate) {
+      const loot = this.looting.collectStep({
+        sessionId: lootSessionId,
+        origin: state.candidate,
+        radius: Math.max(spec.width, spec.depth) + 6
+      });
+      if (loot.status !== "clear") {
+        this.report(
+          "working",
+          "Collecting cleared site drops",
+          loot.status === "moving"
+            ? `Collecting ${loot.itemName ?? "a dropped block"}`
+            : "Confirming the cleared site has no drops left"
+        );
+        return;
+      }
+      this.looting.endSession(lootSessionId);
+      state.lootPending = false;
+      this.memory.saveProject(project);
+    }
+
     const result = await this.mining.prepareBuildSite({
       anchor: state.candidate,
       width: spec.width,
@@ -317,12 +342,15 @@ export class ProjectSystem {
       state.rejectedCandidates.push(positionKey(state.candidate));
       state.candidate = undefined;
       state.preparedBlocks = 0;
+      state.lootPending = false;
+      this.looting.endSession(lootSessionId);
       this.memory.saveProject(project);
       this.report("waiting", "Rejected unsafe build site", result.detail);
       return;
     }
     if (result.status === "progress") {
       state.preparedBlocks += result.excavated;
+      state.lootPending = result.excavated > 0;
       this.memory.saveProject(project);
       this.report(
         "working",
