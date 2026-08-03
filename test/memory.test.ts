@@ -68,6 +68,66 @@ describe("EpisodicMemory", () => {
     memory.close();
   });
 
+  it("persists, orders, and depletes observed resource sites", () => {
+    const memory = createMemory();
+    const farther = memory.rememberResourceSite(
+      "birch_log",
+      { x: 30, y: 70, z: 0 },
+      "overworld"
+    );
+    const nearer = memory.rememberResourceSite(
+      "birch_log",
+      { x: 5, y: 64, z: 0 },
+      "overworld"
+    );
+
+    expect(
+      memory
+        .knownResourceSites(
+          ["birch_log"],
+          "overworld",
+          { x: 0, y: 64, z: 0 }
+        )
+        .map((site) => site.id)
+    ).toEqual([nearer.id, farther.id]);
+    memory.depleteResourceSite("birch_log", nearer.position, "overworld");
+    expect(
+      memory.knownResourceSites(["birch_log"], "overworld").map((site) => site.id)
+    ).toEqual([farther.id]);
+    memory.close();
+  });
+
+  it("backfills resource sites from previously recorded visible observations", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "minecraft-ai-memory-"));
+    tempDirectories.push(directory);
+    const databasePath = path.join(directory, "memory.sqlite");
+    let memory = new EpisodicMemory(databasePath);
+    memory.record({
+      occurredAt: "2026-08-03T07:06:56.950Z",
+      kind: "observation",
+      summary: "Observed a birch forest",
+      payload: {
+        dimension: "overworld",
+        visibleBlocks: [
+          { name: "birch_log", x: 34, y: 76, z: -95, distance: 3 },
+          { name: "birch_leaves", x: 34, y: 79, z: -95, distance: 4 }
+        ]
+      }
+    });
+    memory.close();
+
+    memory = new EpisodicMemory(databasePath);
+    expect(memory.knownResourceSites(["birch_log"], "overworld")).toEqual([
+      expect.objectContaining({
+        blockName: "birch_log",
+        position: { x: 34, y: 76, z: -95 },
+        firstObservedAt: "2026-08-03T07:06:56.950Z"
+      })
+    ]);
+    expect(memory.knownResourceSites(["birch_leaves"], "overworld")).toEqual([]);
+    memory.close();
+  });
+
   it("totals recorded API tokens within a rolling window", () => {
     const memory = createMemory();
     memory.record({

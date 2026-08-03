@@ -37,6 +37,7 @@ export class AcquisitionSystem {
   private readonly consecutiveFailures = new Map<number, number>();
   private readonly trunkColumns = new Map<number, TrunkColumn>();
   private readonly searchStates = new Map<number, SearchState>();
+  private readonly attemptedResourceSites = new Map<number, Set<number>>();
   private readonly excludedSources = new Map<number, Set<string>>();
   private readonly storageFailures = new Map<number, number>();
   private taskLifecycle?: TaskLifecycle;
@@ -198,12 +199,34 @@ export class AcquisitionSystem {
         requireVisible: true
       });
       if (result.status !== "mined") {
+        if (
+          result.status === "blocked" &&
+          isTreeSource(source.name)
+        ) {
+          const clearance = await this.mining.clearApproachVegetation({
+            x: source.x,
+            y: source.y,
+            z: source.z
+          });
+          if (clearance.status === "cleared") {
+            console.log(
+              `[work] Cleared obstructing ${clearance.blockName} before retrying ` +
+                `${source.name} at ${source.x}, ${source.y}, ${source.z}`
+            );
+            return;
+          }
+        }
         this.retrySource(
           order.id,
           source,
           result.status === "blocked" ? result.detail : "source was already clear"
         );
       } else {
+        this.memory.depleteResourceSite(
+          source.name,
+          source,
+          snapshot.dimension
+        );
         this.consecutiveFailures.delete(order.id);
         this.trunkColumns.set(order.id, {
           x: source.x,
@@ -223,6 +246,7 @@ export class AcquisitionSystem {
     this.consecutiveFailures.delete(id);
     this.trunkColumns.delete(id);
     this.searchStates.delete(id);
+    this.attemptedResourceSites.delete(id);
     this.excludedSources.delete(id);
     this.storageFailures.delete(id);
     this.requireTaskLifecycle().finishWorkOrder(id, "completed", reason);
@@ -240,6 +264,7 @@ export class AcquisitionSystem {
     this.consecutiveFailures.delete(id);
     this.trunkColumns.delete(id);
     this.searchStates.delete(id);
+    this.attemptedResourceSites.delete(id);
     this.excludedSources.delete(id);
     this.storageFailures.delete(id);
     this.requireTaskLifecycle().finishWorkOrder(id, "blocked", reason);
@@ -274,16 +299,35 @@ export class AcquisitionSystem {
       if (connected[0]) return connected[0];
     }
 
-    return snapshot.visibleBlocks.find((block) =>
-      matchesGatherSource(order, block.name) &&
-      !this.isExcluded(order.id, block)
+    const targeted = this.perception.findVisibleBlocks(
+      order.spec.blockNames,
+      32,
+      64
     );
+    const visible = new Map<string, VisibleBlock>();
+    for (const block of [...snapshot.visibleBlocks, ...targeted]) {
+      if (!matchesGatherSource(order, block.name)) continue;
+      visible.set(blockKey(block), block);
+      this.memory.rememberResourceSite(
+        block.name,
+        block,
+        snapshot.dimension,
+        snapshot.observedAt
+      );
+    }
+    const source = [...visible.values()]
+      .filter((block) => !this.isExcluded(order.id, block))
+      .sort((left, right) => left.distance - right.distance)[0];
+    if (source) this.searchStates.delete(order.id);
+    return source;
   }
 
   private async exploreForSource(
     order: WorkOrder,
     snapshot: PerceptionSnapshot
   ): Promise<void> {
+    if (await this.returnToRememberedSource(order, snapshot)) return;
+
     const state = this.searchStates.get(order.id) ?? {
       origin: snapshot.position,
       nextWaypoint: 0
@@ -326,6 +370,58 @@ export class AcquisitionSystem {
     if (result.status === "blocked") {
       console.warn(`[work] Search movement failed: ${result.detail}`);
     }
+  }
+
+  private async returnToRememberedSource(
+    order: WorkOrder,
+    snapshot: PerceptionSnapshot
+  ): Promise<boolean> {
+    const attempted = this.attemptedResourceSites.get(order.id) ?? new Set<number>();
+    this.attemptedResourceSites.set(order.id, attempted);
+    const site = this.memory
+      .knownResourceSites(
+        order.spec.blockNames,
+        snapshot.dimension,
+        snapshot.position,
+        50
+      )
+      .find((candidate) => !attempted.has(candidate.id));
+    if (!site) return false;
+    attempted.add(site.id);
+
+    this.reportActivity(
+      "working",
+      `Returning to remembered ${order.spec.itemName}`,
+      `${site.position.x}, ${site.position.y}, ${site.position.z}`
+    );
+    console.log(
+      `[work] Returning to remembered ${site.blockName} at ` +
+        `${site.position.x}, ${site.position.y}, ${site.position.z}`
+    );
+    const result = await this.movement.reachSurfaceArea(site.position, 5);
+    if (result.status === "blocked") {
+      console.warn(`[work] Remembered resource route failed: ${result.detail}`);
+      return true;
+    }
+
+    const rememberedBlock = this.perception.blockAt(site.position);
+    if (!rememberedBlock || rememberedBlock.name !== site.blockName) {
+      this.memory.depleteResourceSite(
+        site.blockName,
+        site.position,
+        site.dimension
+      );
+      return true;
+    }
+    if (!this.perception.canSeeBlock(rememberedBlock) && isTreeSource(site.blockName)) {
+      const clearance = await this.mining.clearApproachVegetation(site.position);
+      if (clearance.status === "cleared") {
+        console.log(
+          `[work] Cleared ${clearance.blockName} around remembered ${site.blockName}`
+        );
+      }
+    }
+    return true;
   }
 
   private async storeGatheredItems(order: WorkOrder): Promise<void> {
@@ -433,4 +529,8 @@ export function matchesGatherSource(
 
 function blockKey(block: Pick<VisibleBlock, "x" | "y" | "z">): string {
   return `${block.x},${block.y},${block.z}`;
+}
+
+function isTreeSource(name: string): boolean {
+  return name.endsWith("_log") || name.endsWith("_stem");
 }

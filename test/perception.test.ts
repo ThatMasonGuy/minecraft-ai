@@ -16,6 +16,30 @@ describe("resolveRaycastBlock", () => {
     expect(blockAt).not.toHaveBeenCalled();
   });
 
+  it("returns only currently visible matches from targeted resource sensing", () => {
+    const visiblePosition = new Vec3(4, 70, -9);
+    const hiddenPosition = new Vec3(6, 70, -9);
+    const visibleBlock = { name: "birch_log", position: visiblePosition };
+    const hiddenBlock = { name: "birch_log", position: hiddenPosition };
+    const bot = {
+      entity: { position: new Vec3(4, 69, -6), height: 1.62 },
+      registry: { blocksByName: { birch_log: { id: 17 } } },
+      findBlocks: vi.fn(() => [visiblePosition, hiddenPosition]),
+      blockAt: vi.fn((position: Vec3) =>
+        position.equals(visiblePosition) ? visibleBlock : hiddenBlock
+      ),
+      canSeeBlock: vi.fn((block: unknown) => block === visibleBlock)
+    };
+    const perception = new Perception(bot as never, 32, {
+      snapshot: () => [],
+      emptySlots: () => 36
+    } as never);
+
+    expect(perception.findVisibleBlocks(["birch_log"])).toEqual([
+      expect.objectContaining({ name: "birch_log", x: 4, y: 70, z: -9 })
+    ]);
+  });
+
   it("also accepts the coordinate-only declared shape", () => {
     const position = new Vec3(4, 70, -9);
     const blockAt = vi.fn(() => ({

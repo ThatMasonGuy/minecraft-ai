@@ -21,6 +21,7 @@ import type {
   ProjectPlan,
   ProjectPlanDraft,
   RecoveryJob,
+  ResourceSite,
   TaskOrigin,
   WorkOrder
 } from "./types.js";
@@ -104,6 +105,18 @@ interface OwnedContainerRow {
   status: OwnedContainer["status"];
   created_at: string;
   updated_at: string;
+}
+
+interface ResourceSiteRow {
+  id: number;
+  block_name: string;
+  x: number;
+  y: number;
+  z: number;
+  dimension: string;
+  status: ResourceSite["status"];
+  first_observed_at: string;
+  last_observed_at: string;
 }
 
 interface ApiPriceVersionRow {
@@ -301,6 +314,22 @@ export class EpisodicMemory {
       CREATE INDEX IF NOT EXISTS idx_owned_containers_status
       ON owned_containers(status, dimension, updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS resource_sites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        block_name TEXT NOT NULL,
+        x INTEGER NOT NULL,
+        y INTEGER NOT NULL,
+        z INTEGER NOT NULL,
+        dimension TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('active', 'depleted')),
+        first_observed_at TEXT NOT NULL,
+        last_observed_at TEXT NOT NULL,
+        UNIQUE(dimension, block_name, x, y, z)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_resource_sites_lookup
+      ON resource_sites(status, dimension, block_name, last_observed_at DESC);
+
       CREATE TABLE IF NOT EXISTS api_price_versions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         provider TEXT NOT NULL,
@@ -424,6 +453,7 @@ export class EpisodicMemory {
     );
     this.seedApiPrice(INITIAL_GPT_5_6_LUNA_PRICE);
     this.backfillLegacyApiUsageEvents();
+    this.backfillResourceSitesFromObservations();
   }
 
   record(event: MemoryEvent): number {
@@ -880,6 +910,87 @@ export class EpisodicMemory {
     return toOwnedContainer(row);
   }
 
+  rememberResourceSite(
+    blockName: string,
+    position: Position,
+    dimension: string,
+    observedAt = new Date().toISOString()
+  ): ResourceSite {
+    const coordinates = floorPosition(position);
+    this.db
+      .prepare(`
+        INSERT INTO resource_sites(
+          block_name, x, y, z, dimension, status,
+          first_observed_at, last_observed_at
+        ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+        ON CONFLICT(dimension, block_name, x, y, z) DO UPDATE SET
+          status = 'active',
+          last_observed_at = excluded.last_observed_at
+      `)
+      .run(
+        blockName,
+        coordinates.x,
+        coordinates.y,
+        coordinates.z,
+        dimension,
+        observedAt,
+        observedAt
+      );
+    return this.resourceSite(blockName, coordinates, dimension);
+  }
+
+  knownResourceSites(
+    blockNames: string[],
+    dimension: string,
+    origin?: Position,
+    limit = 30
+  ): ResourceSite[] {
+    const names = [...new Set(blockNames)].filter(Boolean);
+    if (names.length === 0) return [];
+    const placeholders = names.map(() => "?").join(", ");
+    const distanceOrder = origin
+      ? "((x - ?) * (x - ?) + (z - ?) * (z - ?)) ASC,"
+      : "";
+    const parameters: Array<string | number> = [dimension, ...names];
+    if (origin) {
+      parameters.push(origin.x, origin.x, origin.z, origin.z);
+    }
+    parameters.push(Math.max(1, Math.min(limit, 200)));
+    const rows = this.db
+      .prepare(`
+        SELECT * FROM resource_sites
+        WHERE status = 'active'
+          AND dimension = ?
+          AND block_name IN (${placeholders})
+        ORDER BY ${distanceOrder} last_observed_at DESC, id DESC
+        LIMIT ?
+      `)
+      .all(...parameters) as unknown as ResourceSiteRow[];
+    return rows.map(toResourceSite);
+  }
+
+  depleteResourceSite(
+    blockName: string,
+    position: Position,
+    dimension: string
+  ): void {
+    const coordinates = floorPosition(position);
+    this.db
+      .prepare(`
+        UPDATE resource_sites
+        SET status = 'depleted', last_observed_at = ?
+        WHERE dimension = ? AND block_name = ? AND x = ? AND y = ? AND z = ?
+      `)
+      .run(
+        new Date().toISOString(),
+        dimension,
+        blockName,
+        coordinates.x,
+        coordinates.y,
+        coordinates.z
+      );
+  }
+
   recordContainerDeposit(id: number, itemName: string, count: number): OwnedContainer {
     const row = this.db
       .prepare("SELECT * FROM owned_containers WHERE id = ?")
@@ -1167,6 +1278,64 @@ export class EpisodicMemory {
     this.db.close();
   }
 
+  private backfillResourceSitesFromObservations(): void {
+    const rows = this.db
+      .prepare(`
+        SELECT occurred_at, payload_json
+        FROM events
+        WHERE kind = 'observation' AND payload_json IS NOT NULL
+        ORDER BY occurred_at ASC, id ASC
+      `)
+      .all() as unknown as Array<{
+        occurred_at: string;
+        payload_json: string;
+      }>;
+    if (rows.length === 0) return;
+    const insert = this.db.prepare(`
+      INSERT INTO resource_sites(
+        block_name, x, y, z, dimension, status,
+        first_observed_at, last_observed_at
+      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+      ON CONFLICT(dimension, block_name, x, y, z) DO NOTHING
+    `);
+    for (const row of rows) {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(row.payload_json);
+      } catch {
+        continue;
+      }
+      const snapshot = asRecord(payload);
+      const dimension = readString(snapshot.dimension);
+      if (!dimension || !Array.isArray(snapshot.visibleBlocks)) continue;
+      for (const candidate of snapshot.visibleBlocks) {
+        const block = asRecord(candidate);
+        const blockName = readString(block.name);
+        const x = readNumber(block.x);
+        const y = readNumber(block.y);
+        const z = readNumber(block.z);
+        if (
+          !blockName ||
+          !isMemorableResourceName(blockName) ||
+          x === undefined ||
+          y === undefined ||
+          z === undefined
+        ) {
+          continue;
+        }
+        insert.run(
+          blockName,
+          Math.floor(x),
+          Math.floor(y),
+          Math.floor(z),
+          dimension,
+          row.occurred_at,
+          row.occurred_at
+        );
+      }
+    }
+  }
+
   private seedApiPrice(price: ApiPriceVersion): void {
     this.db
       .prepare(`
@@ -1374,6 +1543,27 @@ export class EpisodicMemory {
     return toRecoveryJob(row);
   }
 
+  private resourceSite(
+    blockName: string,
+    position: Position,
+    dimension: string
+  ): ResourceSite {
+    const row = this.db
+      .prepare(`
+        SELECT * FROM resource_sites
+        WHERE dimension = ? AND block_name = ? AND x = ? AND y = ? AND z = ?
+      `)
+      .get(
+        dimension,
+        blockName,
+        position.x,
+        position.y,
+        position.z
+      ) as ResourceSiteRow | undefined;
+    if (!row) throw new Error(`Resource site ${blockName} does not exist`);
+    return toResourceSite(row);
+  }
+
   private ensureColumn(table: string, column: string, declaration: string): void {
     const columns = this.db
       .prepare(`PRAGMA table_info(${table})`)
@@ -1575,6 +1765,35 @@ function toOwnedContainer(row: OwnedContainerRow): OwnedContainer {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function toResourceSite(row: ResourceSiteRow): ResourceSite {
+  return {
+    id: row.id,
+    blockName: row.block_name,
+    position: { x: row.x, y: row.y, z: row.z },
+    dimension: row.dimension,
+    status: row.status,
+    firstObservedAt: row.first_observed_at,
+    lastObservedAt: row.last_observed_at
+  };
+}
+
+function floorPosition(position: Position): Position {
+  return {
+    x: Math.floor(position.x),
+    y: Math.floor(position.y),
+    z: Math.floor(position.z)
+  };
+}
+
+function isMemorableResourceName(name: string): boolean {
+  return (
+    name.endsWith("_log") ||
+    name.endsWith("_stem") ||
+    name.endsWith("_ore") ||
+    name === "ancient_debris"
+  );
 }
 
 function clampPriority(priority: number): number {

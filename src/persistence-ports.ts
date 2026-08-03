@@ -2,7 +2,11 @@ import type { EpisodicMemory } from "./memory.js";
 
 export type AcquisitionPersistence = Pick<
   EpisodicMemory,
-  "activeWorkOrder" | "updateWorkOrderProgress"
+  | "activeWorkOrder"
+  | "depleteResourceSite"
+  | "knownResourceSites"
+  | "rememberResourceSite"
+  | "updateWorkOrderProgress"
 >;
 
 export type BuildingPersistence = Pick<

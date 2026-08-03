@@ -132,4 +132,44 @@ describe("mining authority", () => {
       detail: expect.stringContaining("unsupported")
     });
   });
+
+  it("clears visible leaves that prevent reaching a requested tree", async () => {
+    const logPosition = { x: 4, y: 64, z: 0 };
+    const leafPosition = new Vec3(2, 64, 0);
+    const log = { name: "birch_log", position: new Vec3(4, 64, 0) };
+    const leaves = { name: "birch_leaves", position: leafPosition };
+    const bot = {
+      entity: { position: new Vec3(0, 64, 0) },
+      canDigBlock: vi.fn((block: unknown) => block === leaves),
+      dig: vi.fn(async () => undefined),
+      stopDigging: vi.fn()
+    };
+    const sensing = {
+      blockAt: vi.fn((position: { x: number; y: number; z: number }) => {
+        if (position.x === logPosition.x && position.y === logPosition.y) return log;
+        if (position.x === leafPosition.x && position.y === leafPosition.y) return leaves;
+        return undefined;
+      })
+    };
+    const mining = new MineflayerMiningSystem(
+      bot as never,
+      sensing as never,
+      {
+        positionForBlock: vi.fn(async () => undefined),
+        goNear: vi.fn(async () => undefined)
+      } as never,
+      {
+        items: () => [],
+        bestHarvestTool: () => undefined,
+        equip: vi.fn()
+      } as never
+    );
+
+    await expect(mining.clearApproachVegetation(logPosition)).resolves.toEqual({
+      status: "cleared",
+      blockName: "birch_leaves",
+      position: { x: 2, y: 64, z: 0 }
+    });
+    expect(bot.dig).toHaveBeenCalledWith(leaves);
+  });
 });

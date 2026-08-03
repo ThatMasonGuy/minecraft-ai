@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Made AcquisitionSystem run targeted visibility checks for requested blocks, return to remembered resource sites before blind exploration, clear visible leaf and vine obstructions through MiningSystem, and contain unreachable-block approach failures as retryable outcomes.
 - Made shared Pathfinder routing strongly prefer dry ground, disabled parkour in surface searches, and expanded escape destinations across nearby elevations so water and uneven terrain no longer collapse evasion into same-level stop/replan loops.
 - Increased escape-route stall tolerance and preserved rejected destinations while temporarily blocked, preventing slow route startup from repeatedly selecting and cancelling the same failed segment.
 - Routed build-site excavation drops through LootingSystem with persisted collection sessions, so site preparation drains mined blocks before continuing instead of abandoning most drops in the cleared area.
@@ -49,6 +50,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added durable, perception-bounded resource-site memory with nearest-site lookup, depletion tracking, and legacy observation backfill, allowing gather orders to reuse forests and exposed ore locations they have actually seen across restarts.
 - Added an enclosed deterministic FoodProvisioningSystem that preempts ordinary projects and gathering, consumes held food including emergency rotten flesh when critical, recovers before risky foraging when hunger permits regeneration, collects food drops, requests passive-animal combat, and searches visible terrain without model calls.
 - Added a bounded planner-authored house design language for arbitrary connected footprints, entrance placement, names, and wall heights; deterministic compilation now derives site preparation, materials, workbench location, shell placements, and verification from the authored geometry instead of selecting a coded layout.
 - Added a coordinate-free high-level project compiler and `delegate_project` planner tool for verified starter shelters and full diamond progressions; deterministic code now owns material/site selection, complete plan generation, goal linking, and validation.

@@ -17,6 +17,11 @@ export interface SensingSystem {
   isBlockCurrentlyVisible(x: number, y: number, z: number): boolean;
   visibleEntity(id: number): VisibleEntity | undefined;
   inspectVisibleBlock(x: number, y: number, z: number): VisibleBlock | undefined;
+  findVisibleBlocks(
+    blockNames: string[],
+    maxDistance?: number,
+    count?: number
+  ): VisibleBlock[];
   blockAt(
     position: Pick<Position, "x" | "y" | "z">,
     visibility?: "loaded" | "visible"
@@ -122,6 +127,39 @@ export class MineflayerSensingSystem implements SensingSystem {
       ].sort((a, b) => a.distance - b.distance);
     }
     return visible;
+  }
+
+  findVisibleBlocks(
+    blockNames: string[],
+    maxDistance = this.maxDistance,
+    count = 64
+  ): VisibleBlock[] {
+    const blockIds = blockNames
+      .map((name) => this.bot.registry.blocksByName[name]?.id)
+      .filter((id): id is number => id !== undefined);
+    if (blockIds.length === 0 || count <= 0) return [];
+    const origin = this.bot.entity.position.offset(0, this.bot.entity.height, 0);
+    const visible = new Map<string, VisibleBlock>();
+    const positions = this.bot.findBlocks({
+      matching: blockIds,
+      maxDistance: Math.min(this.maxDistance, maxDistance),
+      count: Math.max(256, count * 8)
+    });
+    for (const position of positions) {
+      const block = this.bot.blockAt(position);
+      if (!block || !this.bot.canSeeBlock(block)) continue;
+      const key = `${position.x},${position.y},${position.z}`;
+      visible.set(key, {
+        name: block.name,
+        x: position.x,
+        y: position.y,
+        z: position.z,
+        distance: round(origin.distanceTo(position))
+      });
+    }
+    return [...visible.values()]
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, count);
   }
 
   blockAt(

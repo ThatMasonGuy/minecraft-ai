@@ -76,6 +76,16 @@ export interface OwnedContainer {
   updatedAt: string;
 }
 
+export interface ResourceSite {
+  id: number;
+  blockName: string;
+  position: Position;
+  dimension: string;
+  status: "active" | "depleted";
+  firstObservedAt: string;
+  lastObservedAt: string;
+}
+
 export interface Goal {
   id: number;
   title: string;

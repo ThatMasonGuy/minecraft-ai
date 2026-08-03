@@ -23,6 +23,11 @@ export type MiningResult =
   | { status: "already_clear"; position: Position }
   | { status: "blocked"; position: Position; detail: string };
 
+export type VegetationClearanceResult =
+  | { status: "clear" }
+  | { status: "cleared"; blockName: string; position: Position }
+  | { status: "blocked"; detail: string };
+
 export type SitePreparationResult =
   | { status: "ready"; excavated: number; remaining: 0 }
   | { status: "progress"; excavated: number; remaining: number }
@@ -38,6 +43,7 @@ export interface MiningSystem {
     clearanceHeight: number;
     maxExcavations: number;
   }): Promise<SitePreparationResult>;
+  clearApproachVegetation(target: Position): Promise<VegetationClearanceResult>;
   canMine(position: Position): boolean;
   canExcavate(position: Position): boolean;
 }
@@ -69,7 +75,17 @@ export class MineflayerMiningSystem implements MiningSystem {
       };
     }
     if (request.approach !== false && !this.bot.canDigBlock(block)) {
-      await this.movement.positionForBlock(request.position);
+      try {
+        await this.movement.positionForBlock(request.position);
+      } catch (error) {
+        return {
+          status: "blocked",
+          position: request.position,
+          detail:
+            `could not approach ${block.name}: ` +
+            (error instanceof Error ? error.message : String(error))
+        };
+      }
       block = this.sensing.blockAt(
         request.position,
         request.requireVisible ? "visible" : "loaded"
@@ -107,6 +123,53 @@ export class MineflayerMiningSystem implements MiningSystem {
       }
     }
     return { status: "mined", blockName: block.name, position: request.position };
+  }
+
+  async clearApproachVegetation(
+    target: Position
+  ): Promise<VegetationClearanceResult> {
+    const targetBlock = this.sensing.blockAt(target, "visible");
+    if (targetBlock && this.bot.canDigBlock(targetBlock)) return { status: "clear" };
+
+    const candidates: Array<{ name: string; position: Position }> = [];
+    for (let dx = -2; dx <= 2; dx += 1) {
+      for (let dz = -2; dz <= 2; dz += 1) {
+        for (let dy = -1; dy <= 3; dy += 1) {
+          const position = {
+            x: target.x + dx,
+            y: target.y + dy,
+            z: target.z + dz
+          };
+          const block = this.sensing.blockAt(position, "visible");
+          if (!block || !isVegetationObstruction(block.name)) continue;
+          candidates.push({ name: block.name, position });
+        }
+      }
+    }
+    candidates.sort(
+      (left, right) =>
+        distanceSquared(left.position, this.bot.entity.position) -
+        distanceSquared(right.position, this.bot.entity.position)
+    );
+    if (candidates.length === 0) return { status: "clear" };
+
+    let lastDetail = "no visible vegetation could be cleared";
+    for (const candidate of candidates.slice(0, 6)) {
+      const result = await this.mineBlock({
+        position: candidate.position,
+        requireVisible: true,
+        collectAfter: false
+      });
+      if (result.status === "mined") {
+        return {
+          status: "cleared",
+          blockName: result.blockName,
+          position: result.position
+        };
+      }
+      if (result.status === "blocked") lastDetail = result.detail;
+    }
+    return { status: "blocked", detail: lastDetail };
   }
 
   async excavateAndEnter(target: Position, clearanceHeight = 2): Promise<number> {
@@ -270,6 +333,15 @@ function distanceSquared(left: Position, right: Position): number {
     (left.x - right.x) ** 2 +
     (left.y - right.y) ** 2 +
     (left.z - right.z) ** 2
+  );
+}
+
+function isVegetationObstruction(name: string): boolean {
+  return (
+    name.endsWith("_leaves") ||
+    name === "vine" ||
+    name === "cave_vines" ||
+    name === "cave_vines_plant"
   );
 }
 
