@@ -889,6 +889,7 @@ export function selectBestWeapon<T extends CombatItem>(items: T[]): T | undefine
 }
 
 export function attackCooldownMs(weaponName: string | undefined): number {
+  if (!weaponName) return 725;
   const attacksPerSecond = weaponProfile(weaponName)?.speed ?? 4;
   return Math.ceil(20 / attacksPerSecond) * 50 + 25;
 }

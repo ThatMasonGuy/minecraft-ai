@@ -98,10 +98,10 @@ describe("combat equipment", () => {
 
   it("uses server-tick-aligned cooldowns for the equipped weapon", () => {
     expect(attackCooldownMs("wooden_axe")).toBeGreaterThan(
-      attackCooldownMs("stone_sword")
-    );
-    expect(attackCooldownMs("stone_sword")).toBeGreaterThan(
       attackCooldownMs(undefined)
+    );
+    expect(attackCooldownMs(undefined)).toBeGreaterThan(
+      attackCooldownMs("stone_sword")
     );
   });
 });
