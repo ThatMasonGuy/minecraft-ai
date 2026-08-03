@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Added capability-specific persistence ports for acquisition, building, projects, recovery, storage, tasks, telemetry, and planner memory queries; subsystems no longer receive the full EpisodicMemory database API.
 - Replaced the legacy MinecraftActions motor surface with PlannerTools, a Bot-free adapter exposing only communication, memory queries, goal lifecycle, broad gather delegation, and task cancellation; goal mutations now route through TaskSystem as well.
 - Extracted outbound chat and whisper mutations into CommunicationSystem; runtime command responses and planner speech now use the same length-bounded API.
 - Added TelemetrySystem as the single event and activity-emission API for enclosed subsystems, centralizing persistent journals and viewer-channel routing while retaining SQLite exclusively in the persistence implementation and stopped-stack maintenance tools.
@@ -35,6 +36,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added architecture enforcement against importing the concrete persistence implementation into enclosed subsystems.
 - Added planner-tool delegation coverage and enforcement that rejects motor-system imports, coordinate-level tools, a revived actions module, or goal mutations outside TaskSystem.
 - Added architecture enforcement against outbound chat mutations outside CommunicationSystem.
 - Added focused telemetry routing coverage and architecture enforcement against subsystem-local event/UI callbacks or SQLite access outside persistence infrastructure.

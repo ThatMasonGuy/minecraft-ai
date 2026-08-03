@@ -1,4 +1,4 @@
-import type { EpisodicMemory } from "./memory.js";
+import type { TelemetryPersistence } from "./persistence-ports.js";
 import type { ActivityUpdate, MemoryEvent } from "./types.js";
 
 export type TelemetryChannel =
@@ -16,7 +16,7 @@ export interface TelemetrySystem {
 
 export class PersistentTelemetrySystem implements TelemetrySystem {
   constructor(
-    private readonly memory: Pick<EpisodicMemory, "record">,
+    private readonly memory: TelemetryPersistence,
     private readonly sinks: Partial<
       Record<TelemetryChannel, (update: ActivityUpdate) => void>
     > = {}

@@ -1,7 +1,7 @@
 import type { Bot } from "mineflayer";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { InventorySystem } from "./inventory-system.js";
-import type { EpisodicMemory } from "./memory.js";
+import type { StoragePersistence } from "./persistence-ports.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
@@ -40,7 +40,7 @@ export class MineflayerStorageSystem implements StorageSystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly memory: StoragePersistence,
     private readonly telemetry: TelemetrySystem,
     private readonly sensing: SensingSystem,
     private readonly movement: MovementSystem,

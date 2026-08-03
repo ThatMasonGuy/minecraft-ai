@@ -2,7 +2,7 @@ import type { Bot } from "mineflayer";
 import { Vec3 } from "vec3";
 import { isReplaceableBlockName } from "./block-classification.js";
 import type { InventorySystem } from "./inventory-system.js";
-import type { EpisodicMemory } from "./memory.js";
+import type { BuildingPersistence } from "./persistence-ports.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { MovementSystem, TraversalPlacement } from "./movement-system.js";
 import type { SensedBlock, SensingSystem } from "./perception.js";
@@ -30,7 +30,7 @@ export interface BuildingSystem extends TraversalPlacement {
 export class MineflayerBuildingSystem implements BuildingSystem {
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly memory: BuildingPersistence,
     private readonly sensing: SensingSystem,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,

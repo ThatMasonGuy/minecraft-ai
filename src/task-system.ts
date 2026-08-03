@@ -1,6 +1,6 @@
 import type { AcquisitionSystem } from "./acquisition-system.js";
 import type { InventorySystem } from "./inventory-system.js";
-import type { EpisodicMemory } from "./memory.js";
+import type { TaskPersistence } from "./persistence-ports.js";
 import {
   validateProjectSemantics
 } from "./project-plan.js";
@@ -40,7 +40,7 @@ export class TaskSystemError extends Error {}
 
 export class TaskSystem implements TaskLifecycle {
   constructor(
-    private readonly memory: EpisodicMemory,
+    private readonly memory: TaskPersistence,
     private readonly telemetry: TelemetrySystem,
     private readonly inventory: InventorySystem,
     private readonly acquisition: AcquisitionSystem,

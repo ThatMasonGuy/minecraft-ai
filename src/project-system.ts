@@ -1,7 +1,7 @@
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
-import type { EpisodicMemory } from "./memory.js";
+import type { ProjectPersistence } from "./persistence-ports.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { Perception } from "./perception.js";
 import {
@@ -87,7 +87,7 @@ export class ProjectSystem {
   private taskLifecycle?: TaskLifecycle;
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly memory: ProjectPersistence,
     private readonly telemetry: TelemetrySystem,
     private readonly perception: Perception,
     private readonly movement: MovementSystem,

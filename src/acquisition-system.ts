@@ -1,4 +1,4 @@
-import type { EpisodicMemory } from "./memory.js";
+import type { AcquisitionPersistence } from "./persistence-ports.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { Perception } from "./perception.js";
@@ -40,7 +40,7 @@ export class AcquisitionSystem {
   private taskLifecycle?: TaskLifecycle;
 
   constructor(
-    private readonly memory: EpisodicMemory,
+    private readonly memory: AcquisitionPersistence,
     private readonly telemetry: TelemetrySystem,
     private readonly perception: Perception,
     private readonly movement: MovementSystem,

@@ -53,6 +53,24 @@ describe("enclosed subsystem boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("gives each subsystem a narrow persistence port", () => {
+    const violations = sourceFiles()
+      .filter((file) => file.endsWith("-system.ts"))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            /EpisodicMemory|from "\.\/memory\.js"/.test(line)
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps broad task submission and cancellation in TaskSystem", () => {
     const allowedSubmission = new Set([
       path.join(SOURCE_ROOT, "memory.ts"),

@@ -1,6 +1,6 @@
 import type { Bot } from "mineflayer";
 import { Vec3 } from "vec3";
-import type { EpisodicMemory } from "./memory.js";
+import type { RecoveryPersistence } from "./persistence-ports.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type {
   ActivityUpdate,
@@ -49,7 +49,7 @@ export class RecoverySystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly memory: RecoveryPersistence,
     private readonly telemetry: TelemetrySystem,
     private readonly movement: MovementSystem,
     private readonly sensing: SensingSystem,

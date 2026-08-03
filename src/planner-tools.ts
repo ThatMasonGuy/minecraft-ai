@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CommunicationSystem } from "./communication-system.js";
-import type { EpisodicMemory } from "./memory.js";
+import type { PlannerMemoryQueries } from "./persistence-ports.js";
 import type { SensingSystem } from "./perception.js";
 import type { TaskSystem } from "./task-system.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
@@ -34,7 +34,7 @@ export class PlannerTools {
   private queue: Promise<void> = Promise.resolve();
 
   constructor(
-    private readonly memory: Pick<EpisodicMemory, "search" | "near">,
+    private readonly memory: PlannerMemoryQueries,
     private readonly sensing: SensingSystem,
     private readonly tasks: TaskSystem,
     private readonly communication: CommunicationSystem,
