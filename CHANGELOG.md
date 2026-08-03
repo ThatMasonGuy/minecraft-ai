@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Made build-site selection terrain-aware across nearby elevations, separated future excavation feasibility from Mineflayer's current five-block reach check, and kept temporarily unavailable site scans active instead of terminally blocking the project; legacy false site blocks now recover automatically.
 - Added an explicit, ledger-tagged operator-only cooldown bypass for deliberate live evaluations while preserving the normal minimum interval for automatic and untagged planner requests.
 - Forced explicitly tagged shelter and house planning requests onto the high-level house-design tool so an initial paid call cannot be consumed by chat before creating deterministic work.
 - Replaced coded compact, standard, and spacious house choices with planner-authored connected footprint geometry; autonomous house identity and layout now come from planning while deterministic systems own safe realization.

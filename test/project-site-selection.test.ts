@@ -44,4 +44,26 @@ describe("project build-site selection", () => {
 
     expect(candidate).toBeUndefined();
   });
+
+  it("finds a nearby level surface even when the bot is above its build elevation", () => {
+    const candidate = selectBuildSiteCandidate({
+      center: { x: 0, y: 67, z: 0 },
+      width: 3,
+      depth: 3,
+      clearanceHeight: 3,
+      searchRadius: 0,
+      maxObstructions: 8,
+      blockAt: ({ y }) =>
+        y === 63
+          ? { name: "grass_block", boundingBox: "block" }
+          : { name: "air", boundingBox: "empty" },
+      canMine: () => true
+    });
+
+    expect(candidate).toEqual({
+      anchor: { x: -1, y: 64, z: -1 },
+      obstructions: 0,
+      score: 6
+    });
+  });
 });

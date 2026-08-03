@@ -39,6 +39,7 @@ export interface MiningSystem {
     maxExcavations: number;
   }): Promise<SitePreparationResult>;
   canMine(position: Position): boolean;
+  canExcavate(position: Position): boolean;
 }
 
 export class MineflayerMiningSystem implements MiningSystem {
@@ -238,6 +239,16 @@ export class MineflayerMiningSystem implements MiningSystem {
   canMine(position: Position): boolean {
     const block = this.sensing.blockAt(position);
     return Boolean(block && this.bot.canDigBlock(block));
+  }
+
+  canExcavate(position: Position): boolean {
+    const block = this.sensing.blockAt(position);
+    return Boolean(
+      block?.diggable &&
+      block.name !== "water" &&
+      block.name !== "lava" &&
+      !isProtectedExcavationBlockName(block.name)
+    );
   }
 }
 

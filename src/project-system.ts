@@ -48,6 +48,7 @@ interface SurveyState {
   candidate?: Position;
   preparedBlocks?: number;
   rejectedCandidates?: string[];
+  scanFailures?: number;
 }
 
 interface AcquireState {
@@ -282,17 +283,21 @@ export class ProjectSystem {
           position.y,
           position.z
         )),
-        canMine: (position) => this.mining.canMine(position)
+        canMine: (position) => this.mining.canExcavate(position)
       });
       if (!selected) {
-        this.blockProject(
-          project,
-          `No safe preparable ${spec.width}x${spec.depth} site is loaded nearby`
+        state.scanFailures = (state.scanFailures ?? 0) + 1;
+        this.memory.saveProject(project);
+        this.report(
+          "waiting",
+          `Waiting for a preparable ${spec.width}x${spec.depth} site`,
+          `Loaded terrain scan ${state.scanFailures} found no safe candidate; the project remains active`
         );
         return;
       }
       state.candidate = selected.anchor;
       state.preparedBlocks = 0;
+      state.scanFailures = 0;
       this.memory.saveProject(project);
       this.report(
         "working",
@@ -1235,6 +1240,24 @@ export class ProjectSystem {
       return resumed;
     }
     if (
+      step.spec.kind === "survey_site" &&
+      project.statusReason?.startsWith("No safe preparable ")
+    ) {
+      step.status = "pending";
+      step.statusReason = undefined;
+      project.status = "active";
+      project.statusReason = undefined;
+      const resumed = this.memory.saveProject(project);
+      this.telemetry.record({
+        kind: "project_recovery",
+        summary:
+          `${project.title}: retrying site preparation with terrain-aware ` +
+          "selection",
+        importance: 9
+      });
+      return resumed;
+    }
+    if (
       step.spec.kind !== "prospect_resource" ||
       !project.statusReason?.startsWith("Prospecting route is blocked:")
     ) {
@@ -2034,6 +2057,7 @@ export function selectBuildSiteCandidate(options: {
   depth: number;
   clearanceHeight: number;
   searchRadius: number;
+  verticalSearchRadius?: number;
   maxObstructions: number;
   rejected?: Set<string>;
   blockAt: (position: Position) =>
@@ -2045,56 +2069,59 @@ export function selectBuildSiteCandidate(options: {
   let best: BuildSiteCandidate | undefined;
   for (let centerDx = -options.searchRadius; centerDx <= options.searchRadius; centerDx += 1) {
     for (let centerDz = -options.searchRadius; centerDz <= options.searchRadius; centerDz += 1) {
-      const anchor = {
-        x: options.center.x + centerDx - Math.floor(options.width / 2),
-        y: options.center.y,
-        z: options.center.z + centerDz - Math.floor(options.depth / 2)
-      };
-      if (options.rejected?.has(positionKey(anchor))) continue;
-      let obstructions = 0;
-      let valid = true;
-      for (let dx = 0; dx < options.width && valid; dx += 1) {
-        for (let dz = 0; dz < options.depth && valid; dz += 1) {
-          const x = anchor.x + dx;
-          const z = anchor.z + dz;
-          const ground = options.blockAt({ x, y: anchor.y - 1, z });
-          if (!isSolid(ground?.name, ground?.boundingBox)) {
-            valid = false;
-            break;
-          }
-          for (let dy = 0; dy < options.clearanceHeight; dy += 1) {
-            const position = { x, y: anchor.y + dy, z };
-            const block = options.blockAt(position);
-            if (!block) {
+      const verticalRadius = options.verticalSearchRadius ?? 4;
+      for (let verticalOffset = -verticalRadius; verticalOffset <= verticalRadius; verticalOffset += 1) {
+        const anchor = {
+          x: options.center.x + centerDx - Math.floor(options.width / 2),
+          y: options.center.y + verticalOffset,
+          z: options.center.z + centerDz - Math.floor(options.depth / 2)
+        };
+        if (options.rejected?.has(positionKey(anchor))) continue;
+        let obstructions = 0;
+        let valid = true;
+        for (let dx = 0; dx < options.width && valid; dx += 1) {
+          for (let dz = 0; dz < options.depth && valid; dz += 1) {
+            const x = anchor.x + dx;
+            const z = anchor.z + dz;
+            const ground = options.blockAt({ x, y: anchor.y - 1, z });
+            if (!isSolid(ground?.name, ground?.boundingBox)) {
               valid = false;
               break;
             }
-            if (isReplaceableBlockName(block.name)) continue;
-            if (
-              block.name === "water" ||
-              block.name === "lava" ||
-              isProtectedExcavationBlockName(block.name) ||
-              !options.canMine(position)
-            ) {
-              valid = false;
-              break;
-            }
-            obstructions += 1;
-            if (obstructions > options.maxObstructions) {
-              valid = false;
-              break;
+            for (let dy = 0; dy < options.clearanceHeight; dy += 1) {
+              const position = { x, y: anchor.y + dy, z };
+              const block = options.blockAt(position);
+              if (!block) {
+                valid = false;
+                break;
+              }
+              if (isReplaceableBlockName(block.name)) continue;
+              if (
+                block.name === "water" ||
+                block.name === "lava" ||
+                isProtectedExcavationBlockName(block.name) ||
+                !options.canMine(position)
+              ) {
+                valid = false;
+                break;
+              }
+              obstructions += 1;
+              if (obstructions > options.maxObstructions) {
+                valid = false;
+                break;
+              }
             }
           }
         }
+        if (!valid) continue;
+        const distance = Math.hypot(centerDx, centerDz);
+        const candidate = {
+          anchor,
+          obstructions,
+          score: distance * 4 + Math.abs(verticalOffset) * 2 + obstructions
+        };
+        if (!best || candidate.score < best.score) best = candidate;
       }
-      if (!valid) continue;
-      const distance = Math.hypot(centerDx, centerDz);
-      const candidate = {
-        anchor,
-        obstructions,
-        score: distance * 4 + obstructions
-      };
-      if (!best || candidate.score < best.score) best = candidate;
     }
   }
   return best;
