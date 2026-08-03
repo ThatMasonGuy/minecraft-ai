@@ -182,7 +182,7 @@ export class MinecraftRuntime {
       const executionCoordinator = new ExecutionCoordinator(bot);
       this.executionCoordinator = executionCoordinator;
       survivalSystem.start();
-      this.combatSystem = new CombatSystem(
+      const combatSystem = new CombatSystem(
         bot,
         this.memory,
         movementSystem,
@@ -196,7 +196,8 @@ export class MinecraftRuntime {
           () => this.combatSystem?.isActive() ?? false
         )
       );
-      this.combatSystem.start();
+      this.combatSystem = combatSystem;
+      combatSystem.start();
       if (config.viewerEnabled) {
         this.viewer = startViewerServer(bot, {
           host: config.viewerHost,
@@ -351,6 +352,7 @@ export class MinecraftRuntime {
         productionSystem,
         storageSystem,
         survivalSystem,
+        combatSystem,
         config.workExecutorTickMs,
         (activity) => {
           if (

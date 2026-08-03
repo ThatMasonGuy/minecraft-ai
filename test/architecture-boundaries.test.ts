@@ -236,4 +236,27 @@ describe("enclosed subsystem boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("keeps entity attacks and shield-use mutations in combat", () => {
+    const allowed = new Set([path.join(SOURCE_ROOT, "combat-system.ts")]);
+    const forbidden = [
+      /(?:this\.)?bot\.attack\s*\(/,
+      /(?:this\.)?bot\.(?:activateItem|deactivateItem)\s*\(/
+    ];
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            forbidden.some((pattern) => pattern.test(line))
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
 });

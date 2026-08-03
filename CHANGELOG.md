@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Routed project food hunting through CombatSystem's visible-mob engagement API, eliminating the parallel project attack loop while preserving the unconditional player-target rejection boundary.
 - Promoted persistent gather work from an action-driven executor to AcquisitionSystem; source selection, finite or continuing search, mining, storage pressure, survival pauses, progress accounting, and escalation now compose enclosed subsystem APIs without planner tools.
 - Promoted death-site recovery from an action-coupled executor to RecoverySystem; it now orchestrates only movement, sensing, inventory, looting, mining, and storage APIs, with no planner-action dependency or parallel block lookup.
 - Extracted vital-state policy, automatic eating, armour upkeep, food consumption, sleeping, waking, danger escalation, and combat-readiness decisions into SurvivalSystem; combat and project workflows now consume survival outcomes instead of raw health or hunger state.
@@ -28,6 +29,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added combat API coverage for explicit non-player engagements plus architecture enforcement against attacks or shield mutations outside CombatSystem.
 - Added focused survival-policy coverage plus enforcement against raw health, hunger, oxygen, automatic-eating, sleep, or wake access outside SurvivalSystem and read-only presentation adapters.
 - Added storage transfer and ownership coverage plus enforcement against direct container access outside StorageSystem.
 - Added production recipe and unavailable-material coverage plus enforcement against crafting or furnace access outside ProductionSystem.

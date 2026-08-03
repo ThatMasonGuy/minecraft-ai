@@ -23,6 +23,7 @@ import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
+import type { CombatSystem } from "./combat-system.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-system.js";
@@ -94,6 +95,7 @@ export class ProjectExecutor {
     private readonly production: ProductionSystem,
     private readonly storage: StorageSystem,
     private readonly survival: SurvivalSystem,
+    private readonly combat: CombatSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -1369,42 +1371,20 @@ export class ProjectExecutor {
       state.forageTargetId = target.id;
       state.forageTargetPosition = floorPosition(target.position);
       this.memory.saveProject(project);
-      const distance = this.bot.entity.position.distanceTo(
-        target.position
-      );
       this.report(
         "working",
         `Hunting visible ${target.name ?? "animal"} for food`,
         `${safeFoodCount(this.inventory)}/3 reserve items`
       );
-      if (distance > 3.2) {
-        await this.movement.goNear(target.position, 2, 12_000);
-        return true;
-      }
-      if (
-        Date.now() - (state.lastForageAttackAt ?? 0) <
-        550
-      ) {
-        return true;
-      }
-      const weapon = this.inventory
-        .items()
-        .filter(
-          (item) =>
-            item.name.endsWith("_sword") ||
-            item.name.endsWith("_axe")
-        )[0];
-      if (weapon) await this.inventory.equip(weapon, "hand");
-      await this.movement.face(
-        target.position.offset(
-          0,
-          Math.max(0.4, target.height / 2),
-          0
-        )
+      const engagement = this.combat.engageVisibleMob(
+        target.id,
+        "A project requested visible food acquisition"
       );
-      this.bot.attack(target);
-      state.lastForageAttackAt = Date.now();
-      this.memory.saveProject(project);
+      if (engagement === "unavailable" || engagement === "rejected") {
+        state.forageTargetId = undefined;
+        state.forageTargetPosition = undefined;
+        this.memory.saveProject(project);
+      }
       return true;
     }
 

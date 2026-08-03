@@ -208,6 +208,72 @@ describe("player aggression escape", () => {
   });
 });
 
+describe("combat API ownership", () => {
+  it("accepts a visible non-player target and rejects player targeting", () => {
+    const emitter = new EventEmitter();
+    const botEntity = { id: 1, height: 1.8, position: new Vec3(0, 64, 0) };
+    const cow = {
+      id: 4,
+      type: "mob",
+      name: "cow",
+      displayName: "Cow",
+      isValid: true,
+      height: 1.4,
+      position: new Vec3(3, 64, 0)
+    };
+    const player = {
+      id: 5,
+      type: "player",
+      name: "player",
+      displayName: "Player",
+      username: "friend",
+      isValid: true,
+      height: 1.8,
+      position: new Vec3(2, 64, 0)
+    };
+    const entities = new Map([
+      [cow.id, cow],
+      [player.id, player]
+    ]);
+    const combat = new CombatSystem(
+      Object.assign(emitter, {
+        entity: botEntity,
+        game: { dimension: "overworld" },
+        attack: vi.fn(),
+        activateItem: vi.fn(),
+        deactivateItem: vi.fn()
+      }) as never,
+      { record: vi.fn() } as never,
+      { hold: vi.fn() } as never,
+      {
+        entityById: (id: number) => entities.get(id),
+        hasLineOfSight: () => true,
+        visibleEntitiesRaw: () => []
+      } as never,
+      {
+        items: () => [{ name: "wooden_sword" }],
+        equipment: () => undefined,
+        find: () => undefined,
+        heldItem: () => undefined
+      } as never,
+      { collectStep: vi.fn(), endSession: vi.fn() } as never,
+      {
+        snapshot: () => ({
+          health: 20,
+          food: 20,
+          oxygen: 20,
+          dangerous: false,
+          combatReady: true
+        })
+      } as never
+    );
+
+    expect(combat.engageVisibleMob(player.id, "test request")).toBe("rejected");
+    expect(combat.engageVisibleMob(cow.id, "food acquisition")).toBe("engaged");
+    expect(combat.currentMode()).toBe("pursuing");
+  });
+});
+
 describe("enclosed combat movement", () => {
   it("owns the strike cycle while delegating pursuit and spacing outcomes", async () => {
     const emitter = new EventEmitter();

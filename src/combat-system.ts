@@ -81,6 +81,12 @@ export type CombatDecision =
   | { action: "fight" }
   | { action: "escape"; reason: string };
 
+export type CombatEngagementResult =
+  | "engaged"
+  | "busy"
+  | "unavailable"
+  | "rejected";
+
 interface PlayerHitRecord {
   count: number;
   lastHitAt: number;
@@ -158,6 +164,21 @@ export class CombatSystem {
 
   currentMode(): CombatMode {
     return this.mode;
+  }
+
+  engageVisibleMob(entityId: number, reason: string): CombatEngagementResult {
+    if (this.isActive()) return "busy";
+    const target = this.sensing.entityById(entityId);
+    if (!target || !target.isValid || !this.sensing.hasLineOfSight(target)) {
+      return "unavailable";
+    }
+    if (isPlayerEntity(target)) return "rejected";
+    this.beginMobEncounter(target, reason);
+    const decision = this.assess(target, this.visibleHostiles());
+    if (decision.action === "escape") {
+      this.startEscape(target, decision.reason);
+    }
+    return "engaged";
   }
 
   private readonly scopedPhysicsTick = (): void => {
