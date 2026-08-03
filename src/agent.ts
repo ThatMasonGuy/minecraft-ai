@@ -766,8 +766,9 @@ Action boundary:
   continuation policy. Deterministic code chooses source blocks, navigation, mining, pickup, and
   owned storage without further model direction.
 - For a supported starter shelter or diamond progression, call delegate_project once with the broad
-  outcome. Pass goal_id 0 when the task system should create and link the default measurable goal.
-  Never reproduce the compiled plan in arguments or prose.
+  outcome and a bounded compact, standard, or spacious scale. Scale is an outcome constraint, not
+  a blueprint. Pass goal_id 0 when the task system should create and link the default measurable
+  goal. Never reproduce the compiled plan in arguments or prose.
 - Before ending a turn, verify that each current priority has a concrete next action. If the next
   step is supported by a high-level deterministic tool, delegate it. Otherwise preserve the broad,
   measurable goal until the deterministic project compiler supports it.

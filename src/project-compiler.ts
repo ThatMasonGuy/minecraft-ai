@@ -1,7 +1,9 @@
 import {
   generatedMiningProgressionProject,
   generatedStarterHouseProject,
+  PROJECT_SCALES,
   SUPPORTED_WOOD_FAMILIES,
+  type ProjectScale,
   type SupportedWoodFamily
 } from "./generated-projects.js";
 import type {
@@ -20,6 +22,7 @@ export type HighLevelProjectKind = (typeof HIGH_LEVEL_PROJECT_KINDS)[number];
 export interface HighLevelProjectRequest {
   goalId?: number;
   kind: HighLevelProjectKind;
+  scale: ProjectScale;
   dimension: string;
   visibleBlocks: Array<{ name: string; distance: number }>;
   inventory: Array<Pick<InventoryEntry, "name" | "count">>;
@@ -38,7 +41,11 @@ export function compileHighLevelProject(
 
   switch (request.kind) {
     case "starter_shelter":
-      return generatedStarterHouseProject(request.goalId, woodFamily);
+      return generatedStarterHouseProject(
+        request.goalId,
+        woodFamily,
+        request.scale
+      );
     case "diamond_progression": {
       const rememberedSite = context.ownedContainers.find(
         (container) =>
@@ -47,11 +54,15 @@ export function compileHighLevelProject(
       return generatedMiningProgressionProject(
         request.goalId,
         rememberedSite,
-        woodFamily
+        woodFamily,
+        request.scale
       );
     }
   }
 }
+
+export { PROJECT_SCALES };
+export type { ProjectScale };
 
 export function defaultGoalForProject(kind: HighLevelProjectKind): {
   title: string;

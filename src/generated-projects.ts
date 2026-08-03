@@ -18,6 +18,9 @@ export const SUPPORTED_WOOD_FAMILIES = [
 
 export type SupportedWoodFamily = (typeof SUPPORTED_WOOD_FAMILIES)[number];
 
+export const PROJECT_SCALES = ["compact", "standard", "spacious"] as const;
+export type ProjectScale = (typeof PROJECT_SCALES)[number];
+
 export function generatedBirchStarterHouse(
   goalId: number
 ): ProjectPlanDraft {
@@ -26,18 +29,22 @@ export function generatedBirchStarterHouse(
 
 export function generatedStarterHouseProject(
   goalId: number | undefined,
-  woodFamily: SupportedWoodFamily
+  woodFamily: SupportedWoodFamily,
+  scale: ProjectScale = "compact"
 ): ProjectPlanDraft {
+  const { width, depth } = projectScaleDimensions(scale);
+  const roofY = 3;
   const logName = `${woodFamily}_log`;
   const planksName = `${woodFamily}_planks`;
   const doorName = `${woodFamily}_door`;
   const woodLabel = woodFamily.replaceAll("_", " ");
   const wallPlacements: BlueprintPlacement[] = [];
-  const doorway = { dx: 2, dz: 0 };
-  for (let dy = 0; dy <= 2; dy += 1) {
-    for (let dx = 0; dx <= 4; dx += 1) {
-      for (let dz = 0; dz <= 4; dz += 1) {
-        const boundary = dx === 0 || dx === 4 || dz === 0 || dz === 4;
+  const doorway = { dx: Math.floor(width / 2), dz: 0 };
+  for (let dy = 0; dy < roofY; dy += 1) {
+    for (let dx = 0; dx < width; dx += 1) {
+      for (let dz = 0; dz < depth; dz += 1) {
+        const boundary =
+          dx === 0 || dx === width - 1 || dz === 0 || dz === depth - 1;
         const doorwayGap =
           dx === doorway.dx && dz === doorway.dz && (dy === 0 || dy === 1);
         if (!boundary || doorwayGap) continue;
@@ -46,30 +53,32 @@ export function generatedStarterHouseProject(
     }
   }
   const roofPlacements: BlueprintPlacement[] = [];
-  for (let dz = 0; dz <= 4; dz += 1) {
-    for (let dx = 0; dx <= 4; dx += 1) {
-      roofPlacements.push(block(dx, 3, dz, planksName));
+  for (let dz = 0; dz < depth; dz += 1) {
+    for (let dx = 0; dx < width; dx += 1) {
+      roofPlacements.push(block(dx, roofY, dz, planksName));
     }
   }
+  const plankTarget = wallPlacements.length + roofPlacements.length + 10;
+  const logTarget = Math.ceil(plankTarget / 4);
 
   return {
     goalId,
-    title: `Build a compact ${woodLabel} starter house`,
+    title: `Build a ${scale} ${woodLabel} starter house`,
     completionSummary:
-      `A verified 5x5 ${woodLabel} shelter has enclosed walls, a complete roof, and a working doorway.`,
+      `A verified ${width}x${depth} ${woodLabel} shelter has enclosed walls, a complete roof, and a working doorway.`,
     steps: [
       {
         id: "survey_site",
-        title: "Surveying for a clear 5x5 build site",
+        title: `Preparing a ${width}x${depth} build site`,
         spec: {
           kind: "survey_site",
-          width: 5,
-          depth: 5,
+          width,
+          depth,
           clearanceHeight: 4,
           maxWaypoints: 96,
           waypointSpacing: 6,
           searchRadius: 8,
-          maxSitePreparationBlocks: 100
+          maxSitePreparationBlocks: width * depth * 4
         }
       },
       {
@@ -78,7 +87,7 @@ export function generatedStarterHouseProject(
         spec: {
           kind: "acquire_item",
           itemName: logName,
-          targetCount: 23,
+          targetCount: logTarget,
           sourceBlockNames: [logName]
         }
       },
@@ -88,7 +97,7 @@ export function generatedStarterHouseProject(
         spec: {
           kind: "craft_item",
           itemName: planksName,
-          targetCount: 92
+          targetCount: plankTarget
         }
       },
       {
@@ -146,15 +155,15 @@ export function generatedStarterHouseProject(
             {
               kind: "roofed_area",
               min: { dx: 1, dy: 0, dz: 1 },
-              max: { dx: 3, dy: 0, dz: 3 },
-              roofY: 3
+              max: { dx: width - 2, dy: 0, dz: depth - 2 },
+              roofY
             },
             {
               kind: "boundary_closed",
               min: { dx: 0, dy: 0, dz: 0 },
-              max: { dx: 4, dy: 0, dz: 4 },
+              max: { dx: width - 1, dy: 0, dz: depth - 1 },
               minY: 0,
-              maxY: 2,
+              maxY: roofY - 1,
               openings: [
                 { dx: doorway.dx, dy: 0, dz: doorway.dz },
                 { dx: doorway.dx, dy: 1, dz: doorway.dz }
@@ -175,8 +184,10 @@ export function generatedStarterHouseProject(
 export function generatedMiningProgressionProject(
   goalId: number | undefined,
   rememberedSite?: { x: number; y: number; z: number },
-  woodFamily: SupportedWoodFamily = "oak"
+  woodFamily: SupportedWoodFamily = "oak",
+  scale: ProjectScale = "compact"
 ): ProjectPlanDraft {
+  const { width, depth } = projectScaleDimensions(scale);
   const logName = `${woodFamily}_log`;
   const planksName = `${woodFamily}_planks`;
   const initialSteps: ProjectPlanDraft["steps"] = rememberedSite
@@ -196,13 +207,13 @@ export function generatedMiningProgressionProject(
           title: "Surveying a safe workshop site",
           spec: {
             kind: "survey_site",
-            width: 5,
-            depth: 5,
+            width,
+            depth,
             clearanceHeight: 4,
             maxWaypoints: 96,
             waypointSpacing: 6,
             searchRadius: 8,
-            maxSitePreparationBlocks: 100
+            maxSitePreparationBlocks: width * depth * 4
           }
         }
       ];
@@ -481,4 +492,18 @@ export function relative(
   dz: number
 ): RelativePosition {
   return { dx, dy, dz };
+}
+
+export function projectScaleDimensions(scale: ProjectScale): {
+  width: number;
+  depth: number;
+} {
+  switch (scale) {
+    case "compact":
+      return { width: 5, depth: 5 };
+    case "standard":
+      return { width: 7, depth: 7 };
+    case "spacious":
+      return { width: 9, depth: 9 };
+  }
 }

@@ -10,6 +10,7 @@ describe("high-level deterministic project compiler", () => {
     const plan = compileHighLevelProject(
       {
         kind: "starter_shelter",
+        scale: "standard",
         dimension: "overworld",
         visibleBlocks: [
           { name: "oak_log", distance: 9 },
@@ -20,12 +21,13 @@ describe("high-level deterministic project compiler", () => {
       noContainers
     );
 
-    expect(plan.title).toContain("spruce starter house");
+    expect(plan.title).toContain("standard spruce starter house");
+    expect(plan.completionSummary).toContain("7x7");
     expect(validateProjectSemantics(plan)).toEqual([]);
     expect(plan.steps.find((step) => step.id === "gather_wood")?.spec).toEqual({
       kind: "acquire_item",
       itemName: "spruce_log",
-      targetCount: 23,
+      targetCount: 33,
       sourceBlockNames: ["spruce_log"]
     });
     expect(plan.steps.at(-1)?.spec.kind).toBe("verify_structure");
@@ -44,6 +46,7 @@ describe("high-level deterministic project compiler", () => {
     };
     const request = {
       kind: "diamond_progression" as const,
+      scale: "compact" as const,
       dimension: "overworld",
       visibleBlocks: [],
       inventory: []
@@ -70,6 +73,7 @@ describe("high-level deterministic project compiler", () => {
     const plan = compileHighLevelProject(
       {
         kind: "diamond_progression",
+        scale: "standard",
         dimension: "overworld",
         visibleBlocks: [{ name: "oak_log", distance: 4 }],
         inventory: []
@@ -77,7 +81,11 @@ describe("high-level deterministic project compiler", () => {
       noContainers
     );
 
-    expect(plan.steps[0]?.spec.kind).toBe("survey_site");
+    expect(plan.steps[0]?.spec).toMatchObject({
+      kind: "survey_site",
+      width: 7,
+      depth: 7
+    });
     expect(validateProjectSemantics(plan)).toEqual([]);
   });
 
@@ -85,6 +93,7 @@ describe("high-level deterministic project compiler", () => {
     const plan = compileHighLevelProject(
       {
         kind: "starter_shelter",
+        scale: "compact",
         dimension: "overworld",
         visibleBlocks: [{ name: "stone", distance: 2 }],
         inventory: []
@@ -95,7 +104,7 @@ describe("high-level deterministic project compiler", () => {
     expect(plan.steps.find((step) => step.id === "gather_wood")?.spec).toEqual({
       kind: "acquire_item",
       itemName: "oak_log",
-      targetCount: 23,
+      targetCount: 21,
       sourceBlockNames: ["oak_log"]
     });
   });

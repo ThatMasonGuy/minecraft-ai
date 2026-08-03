@@ -61,13 +61,15 @@ describe("planner tool boundary", () => {
     await expect(
       tools.execute("delegate_project", {
         goal_id: 0,
-        outcome: "starter_shelter"
+        outcome: "starter_shelter",
+        scale: "standard"
       })
     ).resolves.toMatchObject({ ok: true, data: { id: 17 } });
     expect(delegateProject).toHaveBeenCalledWith(
       {
         goalId: undefined,
         kind: "starter_shelter",
+        scale: "standard",
         dimension: "overworld",
         visibleBlocks: [{ name: "spruce_log", distance: 5 }],
         inventory: [{ name: "stick", count: 2 }]

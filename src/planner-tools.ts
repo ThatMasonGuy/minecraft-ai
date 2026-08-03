@@ -5,7 +5,10 @@ import type { SensingSystem } from "./perception.js";
 import type { TaskSystem } from "./task-system.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
 import type { ActionResult } from "./types.js";
-import { HIGH_LEVEL_PROJECT_KINDS } from "./project-compiler.js";
+import {
+  HIGH_LEVEL_PROJECT_KINDS,
+  PROJECT_SCALES
+} from "./project-compiler.js";
 
 export interface PlannerToolDefinition {
   type: "function";
@@ -83,7 +86,8 @@ export class PlannerTools {
           goal_id: numberSchema(
             "Related goal id, or 0 to create and link the default measurable goal"
           ),
-          outcome: enumSchema([...HIGH_LEVEL_PROJECT_KINDS])
+          outcome: enumSchema([...HIGH_LEVEL_PROJECT_KINDS]),
+          scale: enumSchema([...PROJECT_SCALES])
         }
       ),
       tool("cancel_work_order", "Cancel the active deterministic task.", {
@@ -191,7 +195,8 @@ export class PlannerTools {
         const args = z
           .object({
             goal_id: z.number().int().min(0),
-            outcome: z.enum(HIGH_LEVEL_PROJECT_KINDS)
+            outcome: z.enum(HIGH_LEVEL_PROJECT_KINDS),
+            scale: z.enum(PROJECT_SCALES)
           })
           .parse(raw);
         const snapshot = this.sensing.last() ?? this.sensing.observe();
@@ -199,6 +204,7 @@ export class PlannerTools {
           {
             goalId: args.goal_id === 0 ? undefined : args.goal_id,
             kind: args.outcome,
+            scale: args.scale,
             dimension: snapshot.dimension,
             visibleBlocks: snapshot.visibleBlocks.map(({ name, distance }) => ({
               name,

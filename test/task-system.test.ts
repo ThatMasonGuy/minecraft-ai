@@ -94,6 +94,7 @@ describe("enclosed task lifecycle", () => {
     const project = tasks.delegateProject(
       {
         kind: "starter_shelter",
+        scale: "compact",
         dimension: "overworld",
         visibleBlocks: [{ name: "birch_log", distance: 4 }],
         inventory: []
