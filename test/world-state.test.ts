@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("world and agent state snapshots", () => {
-  it("restores checksummed world state and exact API ledger totals", () => {
+  it("restores checksummed world state and exact API ledger totals", async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "minecraft-ai-state-"));
     temporaryDirectories.push(rootDir);
     const worldDir = path.join(rootDir, "test-state", "world");
@@ -31,7 +31,6 @@ describe("world and agent state snapshots", () => {
 
     let memory = new EpisodicMemory(path.join(agentDir, "memory.sqlite"));
     recordUsage(memory, "before-snapshot", 100);
-    memory.close();
 
     const paths = {
       rootDir,
@@ -40,7 +39,7 @@ describe("world and agent state snapshots", () => {
       snapshotDir,
       assertStopped: () => undefined
     };
-    const manifest = createWorldStateSnapshot("baseline", paths);
+    const manifest = await createWorldStateSnapshot("baseline", paths);
     expect(manifest.files.agent.some((file) => file.path.startsWith("auth/"))).toBe(
       false
     );
@@ -49,7 +48,6 @@ describe("world and agent state snapshots", () => {
     fs.writeFileSync(path.join(worldDir, "level.dat"), "mutated world", "utf8");
     fs.writeFileSync(path.join(agentDir, "auth", "credentials.json"), "new-auth", "utf8");
     fs.writeFileSync(path.join(agentDir, "operator-token"), "new-operator-token", "utf8");
-    memory = new EpisodicMemory(path.join(agentDir, "memory.sqlite"));
     recordUsage(memory, "after-snapshot", 200);
     expect(memory.apiUsageSummary().lifetime.calls).toBe(2);
     memory.close();

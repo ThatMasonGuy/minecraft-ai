@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const paths = resolveCliPaths(rootDir, flags);
 
   if (command === "create" && name) {
-    const manifest = createWorldStateSnapshot(name, paths);
+    const manifest = await createWorldStateSnapshot(name, paths);
     print({ snapshot: manifest.name, createdAt: manifest.createdAt, roots: manifest.roots });
     return;
   }

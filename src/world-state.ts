@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
+import { backup, DatabaseSync } from "node:sqlite";
 import { EpisodicMemory } from "./memory.js";
 
 export interface SnapshotFile {
@@ -34,17 +34,22 @@ export interface WorldStateOperationOptions extends WorldStatePaths {
 }
 
 const AGENT_EXCLUSIONS = new Set(["auth", "operator-token"]);
+const AGENT_COPY_EXCLUSIONS = new Set([
+  ...AGENT_EXCLUSIONS,
+  "memory.sqlite",
+  "memory.sqlite-shm",
+  "memory.sqlite-wal"
+]);
 
-export function createWorldStateSnapshot(
+export async function createWorldStateSnapshot(
   name: string,
   options: WorldStateOperationOptions
-): WorldStateManifest {
+): Promise<WorldStateManifest> {
   assertSnapshotName(name);
   const paths = resolvePaths(options);
   (options.assertStopped ?? (() => assertComposeStopped(paths.rootDir)))();
   assertDirectory(paths.worldDir, "world data");
   assertDirectory(paths.agentDir, "agent data");
-  checkpointMemory(paths.agentDir);
   migrateMemory(paths.agentDir);
 
   fs.mkdirSync(paths.snapshotDir, { recursive: true });
@@ -56,7 +61,8 @@ export function createWorldStateSnapshot(
     const worldTarget = path.join(target, "world");
     const agentTarget = path.join(target, "agent");
     copyTree(paths.worldDir, worldTarget);
-    copyTree(paths.agentDir, agentTarget, AGENT_EXCLUSIONS);
+    copyTree(paths.agentDir, agentTarget, AGENT_COPY_EXCLUSIONS);
+    await backupMemoryDatabase(paths.agentDir, agentTarget);
     const worldFiles = inventoryTree(worldTarget);
     const agentFiles = inventoryTree(agentTarget);
     const manifest: WorldStateManifest = {
@@ -84,6 +90,24 @@ export function createWorldStateSnapshot(
   } catch (error) {
     fs.rmSync(target, { recursive: true, force: true });
     throw error;
+  }
+}
+
+async function backupMemoryDatabase(
+  sourceAgentDir: string,
+  targetAgentDir: string
+): Promise<void> {
+  const sourcePath = path.join(sourceAgentDir, "memory.sqlite");
+  if (!fs.existsSync(sourcePath)) return;
+  const targetPath = path.join(targetAgentDir, "memory.sqlite");
+  if (fs.existsSync(targetPath)) {
+    throw new Error(`Snapshot database already exists: ${targetPath}`);
+  }
+  const database = new DatabaseSync(sourcePath, { readOnly: true, timeout: 1_000 });
+  try {
+    await backup(database, targetPath);
+  } finally {
+    database.close();
   }
 }
 

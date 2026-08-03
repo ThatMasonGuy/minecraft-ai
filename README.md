@@ -132,7 +132,7 @@ npm run world:snapshot -- list --env-file .env.test
 npm run world:snapshot -- restore clean-baseline --confirm --env-file .env.test
 ```
 
-The workflow refuses maintenance while Compose services are running, checkpoints SQLite, restricts all state paths to specific directories inside the workspace, and records a SHA-256 manifest for every copied file. Authentication state and the operator bearer token are deliberately excluded from snapshots; restore preserves the current `data/auth` contents and `data/operator-token`. A restore first moves the current world and agent directories into `.minecraft-ai-restore-backups/`, verifies the restored state, and reports that recovery path.
+The workflow refuses maintenance while Compose services are running, uses SQLite's native online-backup API for `memory.sqlite`, restricts all state paths to specific directories inside the workspace, and records a SHA-256 manifest for every captured file. Authentication state and the operator bearer token are deliberately excluded from snapshots; restore preserves the current `data/auth` contents and `data/operator-token`. A restore first moves the current world and agent directories into `.minecraft-ai-restore-backups/`, verifies the restored state, and reports that recovery path.
 
 API usage history is never rewound by a test restore. After restoring the snapshotted planner/executor state, the workflow merges any newer append-only usage and price records from the safety backup into the restored database. Stop any separately launched `npm run dev` process as well as Compose before using these commands.
 
