@@ -37,6 +37,11 @@ const schema = z.object({
   OPERATOR_TOKEN: z.string().optional(),
   DATA_DIR: z.string().default("./data"),
   AGENT_TICK_MS: z.coerce.number().int().min(10_000).default(5_400_000),
+  PLANNER_MIN_REQUEST_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(15 * 60_000)
+    .default(15 * 60_000),
   PERCEPTION_DISTANCE: z.coerce.number().min(4).max(64).default(32),
   MAX_MOVE_DISTANCE: z.coerce.number().min(4).max(256).default(64),
   MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(20).default(2),
@@ -75,6 +80,7 @@ export const config = {
   operatorToken: parsed.OPERATOR_TOKEN?.trim() || undefined,
   dataDir: path.resolve(parsed.DATA_DIR),
   tickMs: parsed.AGENT_TICK_MS,
+  plannerMinRequestIntervalMs: parsed.PLANNER_MIN_REQUEST_INTERVAL_MS,
   perceptionDistance: parsed.PERCEPTION_DISTANCE,
   maxMoveDistance: parsed.MAX_MOVE_DISTANCE,
   maxToolRounds: parsed.MAX_TOOL_ROUNDS,

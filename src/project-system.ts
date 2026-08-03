@@ -85,6 +85,7 @@ export class ProjectSystem {
   private running = false;
   private lastState?: string;
   private taskLifecycle?: TaskLifecycle;
+  private readonly reportedTerminalProjects = new Set<string>();
   constructor(
     private readonly bot: Bot,
     private readonly memory: ProjectPersistence,
@@ -99,6 +100,10 @@ export class ProjectSystem {
     private readonly survival: SurvivalSystem,
     private readonly combat: CombatSystem,
     private readonly tickMs: number,
+    private readonly onTerminal?: (
+      status: "completed" | "blocked",
+      project: ProjectPlan
+    ) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
   ) {}
@@ -132,10 +137,14 @@ export class ProjectSystem {
 
   private async tick(): Promise<void> {
     if (this.running) return;
-    let project =
-      this.memory.activeProject() ??
-      this.resumeRecoverableProject();
-    if (!project) return;
+    let project = this.memory.activeProject() ?? this.resumeRecoverableProject();
+    if (!project) {
+      const latest = this.memory.latestProject();
+      if (latest?.status === "blocked") {
+        this.reportTerminal("blocked", latest);
+      }
+      return;
+    }
     let step = project.steps[project.currentStepIndex];
     if (!step) {
       this.completeProject(project);
@@ -1926,6 +1935,7 @@ export class ProjectSystem {
     });
     this.report("idle", "Project complete", project.completionSummary);
     console.log(`[project] Completed ${project.title}`);
+    this.reportTerminal("completed", project);
   }
 
   private blockProject(project: ProjectPlan, reason: string): void {
@@ -1943,6 +1953,16 @@ export class ProjectSystem {
       importance: 9
     });
     this.report("error", "Project blocked", reason);
+  }
+
+  private reportTerminal(
+    status: "completed" | "blocked",
+    project: ProjectPlan
+  ): void {
+    const key = `${project.id}:${status}:${project.updatedAt}`;
+    if (this.reportedTerminalProjects.has(key)) return;
+    this.reportedTerminalProjects.add(key);
+    this.onTerminal?.(status, project);
   }
 
   private report(

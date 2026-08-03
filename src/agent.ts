@@ -31,6 +31,7 @@ interface AgentOptions {
   toolMode: "dry_run" | "execute";
   webSearchEnabled: boolean;
   tickMs: number;
+  minRequestIntervalMs: number;
   maxToolRounds: number;
   maxOutputTokens: number;
   dailyTokenBudget: number;
@@ -65,6 +66,8 @@ export class AutonomousAgent {
   private readonly safetyIdentifier: string;
   private timer?: NodeJS.Timeout;
   private budgetResumeTimer?: NodeJS.Timeout;
+  private requestCooldownTimer?: NodeJS.Timeout;
+  private resolveRequestCooldown?: (ready: boolean) => void;
   private budgetResumeAt = 0;
   private running = false;
   private pendingTurn?: PendingTurn;
@@ -121,6 +124,10 @@ export class AutonomousAgent {
     if (this.budgetResumeTimer) clearTimeout(this.budgetResumeTimer);
     this.budgetResumeTimer = undefined;
     this.budgetResumeAt = 0;
+    if (this.requestCooldownTimer) clearTimeout(this.requestCooldownTimer);
+    this.requestCooldownTimer = undefined;
+    this.resolveRequestCooldown?.(false);
+    this.resolveRequestCooldown = undefined;
     this.reportActivity("stopped", "Agent stopped");
   }
 
@@ -197,6 +204,17 @@ export class AutonomousAgent {
 
   private async takeTurn(turn: PendingTurn): Promise<void> {
     const { reason } = turn;
+    if (
+      shouldDeferToDeterministicWork(reason, {
+        project: Boolean(this.memory.activeProject()),
+        workOrder: Boolean(this.memory.activeWorkOrder()),
+        recovery: Boolean(this.memory.activeRecoveryJob())
+      })
+    ) {
+      return;
+    }
+    if (!this.hasTokenBudget("initial decision")) return;
+    if (!(await this.waitForRequestCooldown())) return;
     if (
       shouldDeferToDeterministicWork(reason, {
         project: Boolean(this.memory.activeProject()),
@@ -369,6 +387,19 @@ export class AutonomousAgent {
         });
       }
 
+      if (this.tasks.hasActiveDeterministicTask()) {
+        this.memory.record({
+          kind: "planner_continuation_deferred",
+          summary:
+            "Skipped planner continuation while deterministic work can progress",
+          payload: { responseId: response.id, trigger: reason },
+          importance: 6
+        });
+        return;
+      }
+
+      if (!(await this.waitForRequestCooldown())) return;
+      if (this.tasks.hasActiveDeterministicTask()) return;
       if (!this.hasTokenBudget(`tool continuation ${round + 1}`)) return;
       this.reportActivity(
         "thinking",
@@ -576,6 +607,30 @@ export class AutonomousAgent {
     );
   }
 
+  private async waitForRequestCooldown(): Promise<boolean> {
+    while (!this.stopped) {
+      const remaining = plannerRequestCooldownRemainingMs(
+        this.memory.apiUsageRecords(),
+        this.options.minRequestIntervalMs
+      );
+      if (remaining <= 0) return true;
+
+      this.reportActivity(
+        "paused",
+        "Planner cooldown",
+        `Next paid request allowed in ${formatWaitDuration(remaining)}`
+      );
+      const ready = await new Promise<boolean>((resolve) => {
+        this.resolveRequestCooldown = resolve;
+        this.requestCooldownTimer = setTimeout(() => resolve(true), remaining);
+      });
+      this.requestCooldownTimer = undefined;
+      this.resolveRequestCooldown = undefined;
+      if (!ready) return false;
+    }
+    return false;
+  }
+
   private scheduleBudgetResume(resumeAt: Date): void {
     const timestamp = resumeAt.getTime();
     if (this.budgetResumeTimer && this.budgetResumeAt === timestamp) return;
@@ -617,10 +672,20 @@ export function shouldDeferToDeterministicWork(
   const explicitPlayerRequest =
     reason.includes("said in chat:") ||
     reason.includes("whispered:");
-  return (
-    !explicitPlayerRequest &&
-    (active.project || active.workOrder || active.recovery)
+  if (active.project) return true;
+  return !explicitPlayerRequest && (active.workOrder || active.recovery);
+}
+
+export function plannerRequestCooldownRemainingMs(
+  records: Array<{ completedAt: string }>,
+  minimumIntervalMs: number,
+  now = Date.now()
+): number {
+  const latestCompletion = records.reduce(
+    (latest, record) => Math.max(latest, Date.parse(record.completedAt) || 0),
+    0
   );
+  return Math.max(0, latestCompletion + minimumIntervalMs - now);
 }
 
 export function continuityGatherPlan(

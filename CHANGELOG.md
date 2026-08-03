@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Enforced a hard 15-minute minimum between all planner API requests, stopped tool continuations once deterministic work is active, suppressed every model wake while a recoverable project is progressing, and routed only whole-project completion or irrecoverable blocking back to planning.
 - Changed escape routing to retain a useful Pathfinder destination for the full route instead of replacing it every 500 milliseconds; evasion now replans only after reaching the route segment, losing its threat-separation advantage, or genuinely stalling.
 - Added escape-route stall detection to MovementSystem so combat blacklists a Pathfinder destination that produces no positional progress and immediately replans toward an alternate safe cell.
 - Hardened combat response so a healthy bot can fist-fight one ordinary zombie with a movement-aware kiting cadence, recently defeated entities cannot create phantom follow-up encounters, active encounters are visible in telemetry, ranged threats require either 24-block separation or sustained hard cover, safety must remain quiet before recovery begins, visible threats or fresh damage immediately resume evasion, and hostile classification no longer floods runtime traces through the deprecated `mobType` field.

@@ -317,6 +317,19 @@ export class MinecraftRuntime {
         survivalSystem,
         combatSystem,
         config.workExecutorTickMs,
+        (status, project) =>
+          this.agent?.wakeAutomatically(
+            status === "completed"
+              ? `deterministic project ${project.id} completed: ${project.statusReason ?? project.completionSummary}`
+              : `deterministic project ${project.id} is irrecoverably blocked: ${project.statusReason ?? "unknown reason"}`,
+            {
+              workloadType: "executor_escalation",
+              triggerSource: "executor",
+              taskType: "project",
+              taskId: String(project.id),
+              tags: { terminal_status: status }
+            }
+          ),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false) ||
@@ -351,6 +364,7 @@ export class MinecraftRuntime {
         toolMode: config.plannerToolMode,
         webSearchEnabled: config.webSearchEnabled,
         tickMs: config.tickMs,
+        minRequestIntervalMs: config.plannerMinRequestIntervalMs,
         maxToolRounds: config.maxToolRounds,
         maxOutputTokens: config.maxOutputTokens,
         dailyTokenBudget: config.dailyTokenBudget,

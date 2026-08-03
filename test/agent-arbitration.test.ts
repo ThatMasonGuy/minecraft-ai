@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shouldDeferToDeterministicWork } from "../src/agent.js";
+import {
+  plannerRequestCooldownRemainingMs,
+  shouldDeferToDeterministicWork
+} from "../src/agent.js";
 
 describe("model decision arbitration", () => {
   it.each([
@@ -15,11 +18,21 @@ describe("model decision arbitration", () => {
     ).toBe(true);
   });
 
-  it("allows a player to interrupt deterministic work explicitly", () => {
+  it("does not let player chat wake the model while a project can progress", () => {
     expect(
       shouldDeferToDeterministicWork("Mason said in chat: stop", {
         project: true,
         workOrder: false,
+        recovery: false
+      })
+    ).toBe(true);
+  });
+
+  it("allows a player to interrupt a standalone work order explicitly", () => {
+    expect(
+      shouldDeferToDeterministicWork("Mason said in chat: stop", {
+        project: false,
+        workOrder: true,
         recovery: false
       })
     ).toBe(false);
@@ -33,5 +46,26 @@ describe("model decision arbitration", () => {
         recovery: false
       })
     ).toBe(false);
+  });
+
+  it("enforces the request interval from the latest completed API call", () => {
+    const now = Date.parse("2026-08-03T06:20:00.000Z");
+    expect(
+      plannerRequestCooldownRemainingMs(
+        [
+          { completedAt: "2026-08-03T06:00:00.000Z" },
+          { completedAt: "2026-08-03T06:10:00.000Z" }
+        ],
+        15 * 60_000,
+        now
+      )
+    ).toBe(5 * 60_000);
+    expect(
+      plannerRequestCooldownRemainingMs(
+        [{ completedAt: "2026-08-03T06:00:00.000Z" }],
+        15 * 60_000,
+        now
+      )
+    ).toBe(0);
   });
 });
