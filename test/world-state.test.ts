@@ -27,6 +27,7 @@ describe("world and agent state snapshots", () => {
     fs.mkdirSync(path.join(agentDir, "auth"), { recursive: true });
     fs.writeFileSync(path.join(worldDir, "level.dat"), "baseline world", "utf8");
     fs.writeFileSync(path.join(agentDir, "auth", "credentials.json"), "current-auth", "utf8");
+    fs.writeFileSync(path.join(agentDir, "operator-token"), "current-operator-token", "utf8");
 
     let memory = new EpisodicMemory(path.join(agentDir, "memory.sqlite"));
     recordUsage(memory, "before-snapshot", 100);
@@ -43,9 +44,11 @@ describe("world and agent state snapshots", () => {
     expect(manifest.files.agent.some((file) => file.path.startsWith("auth/"))).toBe(
       false
     );
+    expect(manifest.files.agent.some((file) => file.path === "operator-token")).toBe(false);
 
     fs.writeFileSync(path.join(worldDir, "level.dat"), "mutated world", "utf8");
     fs.writeFileSync(path.join(agentDir, "auth", "credentials.json"), "new-auth", "utf8");
+    fs.writeFileSync(path.join(agentDir, "operator-token"), "new-operator-token", "utf8");
     memory = new EpisodicMemory(path.join(agentDir, "memory.sqlite"));
     recordUsage(memory, "after-snapshot", 200);
     expect(memory.apiUsageSummary().lifetime.calls).toBe(2);
@@ -61,6 +64,9 @@ describe("world and agent state snapshots", () => {
     expect(
       fs.readFileSync(path.join(agentDir, "auth", "credentials.json"), "utf8")
     ).toBe("new-auth");
+    expect(fs.readFileSync(path.join(agentDir, "operator-token"), "utf8")).toBe(
+      "new-operator-token"
+    );
     expect(fs.existsSync(restored.safetyBackupDir)).toBe(true);
     expect(restored.retainedApiUsageCalls).toBe(1);
 

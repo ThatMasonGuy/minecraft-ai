@@ -1,5 +1,6 @@
 import compression from "compression";
 import express from "express";
+import helmet from "helmet";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -24,6 +25,7 @@ const { WorldView } = require("prismarine-viewer/viewer") as {
 };
 
 export interface ViewerServerOptions {
+  host: string;
   port: number;
   viewDistance: number;
   maxFps: number;
@@ -54,6 +56,12 @@ export function startViewerServer(
   bot.on("blockUpdate", markWorldActivity);
   bot.on("time", markWorldActivity);
 
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false
+    })
+  );
   app.use(compression());
   app.get("/api/status", (_request, response) => {
     response.setHeader("Cache-Control", "no-store");
@@ -117,9 +125,9 @@ export function startViewerServer(
     console.error(`[viewer] ${error.message}`);
   };
   server.on("error", onError);
-  server.listen(options.port, () => {
+  server.listen(options.port, options.host, () => {
     console.log(
-      `[viewer] Dashboard running on http://localhost:${options.port} ` +
+      `[viewer] Dashboard running on http://${options.host}:${options.port} ` +
         `(${options.viewDistance} chunks, ${options.maxFps} FPS, ` +
         `${options.maxPixelRatio}x pixel ratio)`
     );

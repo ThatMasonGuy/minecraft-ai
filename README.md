@@ -47,6 +47,7 @@ PLANNER_MODE=manual
 PLANNER_TOOL_MODE=dry_run
 WEB_SEARCH_ENABLED=false
 VIEWER_ENABLED=true
+VIEWER_HOST=127.0.0.1
 VIEWER_PORT=3007
 VIEWER_DISTANCE=3
 VIEWER_MAX_FPS=30
@@ -54,6 +55,8 @@ VIEWER_MAX_PIXEL_RATIO=1.25
 OPERATOR_ENABLED=true
 OPERATOR_HOST=127.0.0.1
 OPERATOR_PORT=3008
+# Optional; otherwise persisted privately under DATA_DIR/operator-token.
+# OPERATOR_TOKEN=
 ```
 
 Use `MC_AUTH=microsoft` for a licensed Java Edition account. On first launch, follow the Microsoft device-login message printed in the terminal. Its refresh token is retained under `data/auth/` so restarts do not require a fresh login.
@@ -75,7 +78,7 @@ npm run dev
 
 The current defaults connect to `localhost:25565`. Stop with `Ctrl+C`.
 
-Once the bot has spawned, the local operator interface accepts validated deterministic tasks without making an API call:
+Once the bot has spawned, the local operator interface accepts validated deterministic tasks without making an API call. It requires a bearer token stored automatically in `DATA_DIR/operator-token`; the bundled CLI reads that token without printing it:
 
 ```powershell
 npm run operator -- status
@@ -129,7 +132,7 @@ npm run world:snapshot -- list --env-file .env.test
 npm run world:snapshot -- restore clean-baseline --confirm --env-file .env.test
 ```
 
-The workflow refuses maintenance while Compose services are running, checkpoints SQLite, restricts all state paths to specific directories inside the workspace, and records a SHA-256 manifest for every copied file. Authentication state is deliberately excluded from snapshots; restore preserves the current `data/auth` contents. A restore first moves the current world and agent directories into `.minecraft-ai-restore-backups/`, verifies the restored state, and reports that recovery path.
+The workflow refuses maintenance while Compose services are running, checkpoints SQLite, restricts all state paths to specific directories inside the workspace, and records a SHA-256 manifest for every copied file. Authentication state and the operator bearer token are deliberately excluded from snapshots; restore preserves the current `data/auth` contents and `data/operator-token`. A restore first moves the current world and agent directories into `.minecraft-ai-restore-backups/`, verifies the restored state, and reports that recovery path.
 
 API usage history is never rewound by a test restore. After restoring the snapshotted planner/executor state, the workflow merges any newer append-only usage and price records from the safety backup into the restored database. Stop any separately launched `npm run dev` process as well as Compose before using these commands.
 

@@ -31,6 +31,7 @@ services:
       MC_PORT: "25565"
       MC_VERSION: "1.21.4"
       VIEWER_ENABLED: "true"
+      VIEWER_HOST: "0.0.0.0"
       VIEWER_PORT: "3007"
       VIEWER_DISTANCE: "3"
       VIEWER_MAX_FPS: "30"
@@ -39,7 +40,7 @@ services:
       OPERATOR_HOST: "0.0.0.0"
       OPERATOR_PORT: "3008"
     ports:
-      - "3007:3007"
+      - "127.0.0.1:3007:3007"
       - "127.0.0.1:3008:3008"
     volumes:
       - ${AGENT_DATA_DIR:-./data}:/app/data

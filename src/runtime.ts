@@ -12,6 +12,7 @@ import type { EpisodicMemory } from "./memory.js";
 import { Perception } from "./perception.js";
 import { parsePlanningCommand } from "./planner-mode.js";
 import { OperatorControl } from "./operator-control.js";
+import { loadOrCreateOperatorToken } from "./operator-auth.js";
 import {
   startOperatorServer,
   type OperatorServer
@@ -147,6 +148,7 @@ export class MinecraftRuntime {
       this.defenseExecutor.start();
       if (config.viewerEnabled) {
         this.viewer = startViewerServer(bot, {
+          host: config.viewerHost,
           port: config.viewerPort,
           viewDistance: config.viewerDistance,
           maxFps: config.viewerMaxFps,
@@ -227,7 +229,11 @@ export class MinecraftRuntime {
           this.operator = await startOperatorServer({
             host: config.operatorHost,
             port: config.operatorPort,
-            control
+            control,
+            token: loadOrCreateOperatorToken(
+              config.dataDir,
+              config.operatorToken
+            )
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

@@ -1,6 +1,9 @@
+import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import express, { type NextFunction, type Request, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
+import helmet from "helmet";
 import { ZodError } from "zod";
 import { OperatorControl, OperatorInputError } from "./operator-control.js";
 
@@ -13,14 +16,17 @@ export interface OperatorServerOptions {
   host: string;
   port: number;
   control: OperatorControl;
+  token: string;
+  plannerRateLimit?: { windowMs: number; limit: number };
 }
 
 export async function startOperatorServer(
   options: OperatorServerOptions
 ): Promise<OperatorServer> {
   const app = express();
-  app.disable("x-powered-by");
+  app.use(helmet());
   app.use(express.json({ limit: "256kb", type: "application/json" }));
+  app.use("/api/operator", authorize(options.token));
 
   app.get("/api/operator/status", (_request, response) => {
     response.json(options.control.status());
@@ -31,7 +37,16 @@ export async function startOperatorServer(
   app.post("/api/operator/tasks/gather", route((body) => options.control.submitGather(body)));
   app.post("/api/operator/tasks/project", route((body) => options.control.submitProject(body)));
   app.post("/api/operator/tasks/cancel", route((body) => options.control.cancel(body)));
-  app.post("/api/operator/plan", route((body) => options.control.requestPlan(body)));
+  app.post(
+    "/api/operator/plan",
+    rateLimit({
+      windowMs: options.plannerRateLimit?.windowMs ?? 15 * 60_000,
+      limit: options.plannerRateLimit?.limit ?? 10,
+      standardHeaders: "draft-8",
+      legacyHeaders: false
+    }),
+    route((body) => options.control.requestPlan(body))
+  );
   app.use(
     (
       error: unknown,
@@ -65,6 +80,25 @@ export async function startOperatorServer(
   return {
     url,
     close: () => closeServer(server)
+  };
+}
+
+function authorize(expectedToken: string) {
+  const expected = Buffer.from(expectedToken);
+  return (request: Request, response: Response, next: NextFunction): void => {
+    const authorization = request.header("authorization");
+    const supplied = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+    const candidate = Buffer.from(supplied);
+    if (
+      candidate.length !== expected.length ||
+      !timingSafeEqual(candidate, expected)
+    ) {
+      response.status(401).json({ error: "Operator authentication required" });
+      return;
+    }
+    next();
   };
 }
 

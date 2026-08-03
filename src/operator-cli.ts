@@ -1,9 +1,15 @@
 import "dotenv/config";
 import fs from "node:fs";
+import path from "node:path";
+import { loadOrCreateOperatorToken } from "./operator-auth.js";
 
 const baseUrl =
   process.env.OPERATOR_URL ??
   `http://127.0.0.1:${process.env.OPERATOR_PORT ?? "3008"}`;
+const operatorToken = loadOrCreateOperatorToken(
+  path.resolve(process.env.DATA_DIR ?? "./data"),
+  process.env.OPERATOR_TOKEN
+);
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -103,7 +109,10 @@ async function request(
 ): Promise<unknown> {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${operatorToken}`,
+      ...(body === undefined ? {} : { "content-type": "application/json" })
+    },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const payload = (await response.json()) as unknown;

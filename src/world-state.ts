@@ -33,7 +33,7 @@ export interface WorldStateOperationOptions extends WorldStatePaths {
   assertStopped?: () => void;
 }
 
-const AGENT_EXCLUSIONS = new Set(["auth"]);
+const AGENT_EXCLUSIONS = new Set(["auth", "operator-token"]);
 
 export function createWorldStateSnapshot(
   name: string,
@@ -137,6 +137,13 @@ export function restoreWorldStateSnapshot(
     const currentAuth = path.join(backupAgent, "auth");
     if (fs.existsSync(currentAuth)) {
       copyTree(currentAuth, path.join(paths.agentDir, "auth"));
+    }
+    const currentOperatorToken = path.join(backupAgent, "operator-token");
+    if (fs.existsSync(currentOperatorToken)) {
+      fs.copyFileSync(
+        currentOperatorToken,
+        path.join(paths.agentDir, "operator-token")
+      );
     }
     verifyTree(paths.worldDir, manifest.files.world, "restored world");
     verifyTree(
