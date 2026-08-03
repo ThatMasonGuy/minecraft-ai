@@ -6,6 +6,8 @@ Priority: high
 
 Build a permanent, auditable ledger for every paid API operation so operating cost can be reported by lifetime, calendar day, rolling period, model, and workload. Existing `api_usage` events and the rolling token guard must keep working throughout the migration.
 
+Progress: the append-only request ledger, legacy-event backfill, versioned Luna prices, immutable per-request estimates, rolling token-budget integration, raw usage retention, idempotency, and lifetime/day/model/phase aggregation are implemented. Remaining work in this item is the operator-facing report endpoint, backup/restore proof, provider reconciliation, and live-call evidence.
+
 ### Required data
 
 - Store one immutable record for every API request, including failed and cancelled requests where usage or fees are returned.

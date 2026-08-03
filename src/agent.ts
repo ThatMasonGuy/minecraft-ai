@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import OpenAI from "openai";
-import type { Response } from "openai/resources/responses/responses";
+import type {
+  Response,
+  ResponseCreateParamsNonStreaming
+} from "openai/resources/responses/responses";
 import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { Perception } from "./perception.js";
@@ -177,26 +180,29 @@ export class AutonomousAgent {
       ...(this.options.webSearchEnabled ? [{ type: "web_search" as const }] : [])
     ];
 
-    let response = await this.client.responses.create({
-      model: this.options.model,
-      instructions: AGENT_INSTRUCTIONS,
-      input: JSON.stringify({
-        trigger: reason,
-        current_perception: snapshot,
-        active_goals: goals,
-        active_work_order: workOrder ?? null,
-        active_project: project ?? null,
-        recent_episodic_memories: recentMemories
-      }),
-      tools,
-      reasoning: {
-        effort: this.options.reasoningEffort
+    let response = await this.createTrackedResponse(
+      {
+        model: this.options.model,
+        instructions: AGENT_INSTRUCTIONS,
+        input: JSON.stringify({
+          trigger: reason,
+          current_perception: snapshot,
+          active_goals: goals,
+          active_work_order: workOrder ?? null,
+          active_project: project ?? null,
+          recent_episodic_memories: recentMemories
+        }),
+        tools,
+        reasoning: {
+          effort: this.options.reasoningEffort
+        },
+        text: { verbosity: "low" },
+        max_output_tokens: this.options.maxOutputTokens,
+        safety_identifier: this.safetyIdentifier
       },
-      text: { verbosity: "low" },
-      max_output_tokens: this.options.maxOutputTokens,
-      safety_identifier: this.safetyIdentifier
-    });
-    this.recordUsage(response, "initial decision");
+      "initial decision",
+      reason
+    );
 
     for (let round = 0; round < this.options.maxToolRounds; round += 1) {
       const calls = response.output.filter(
@@ -249,19 +255,22 @@ export class AutonomousAgent {
         "Reviewing action results",
         `Tool continuation ${round + 1}`
       );
-      response = await this.client.responses.create({
-        model: this.options.model,
-        previous_response_id: response.id,
-        input: outputs,
-        tools,
-        reasoning: {
-          effort: this.options.reasoningEffort
+      response = await this.createTrackedResponse(
+        {
+          model: this.options.model,
+          previous_response_id: response.id,
+          input: outputs,
+          tools,
+          reasoning: {
+            effort: this.options.reasoningEffort
+          },
+          text: { verbosity: "low" },
+          max_output_tokens: this.options.maxOutputTokens,
+          safety_identifier: this.safetyIdentifier
         },
-        text: { verbosity: "low" },
-        max_output_tokens: this.options.maxOutputTokens,
-        safety_identifier: this.safetyIdentifier
-      });
-      this.recordUsage(response, `tool continuation ${round + 1}`);
+        `tool continuation ${round + 1}`,
+        reason
+      );
     }
 
     this.memory.record({
@@ -273,34 +282,85 @@ export class AutonomousAgent {
     });
   }
 
-  private recordUsage(
-    response: Pick<Response, "id" | "model" | "usage">,
-    phase: string
-  ): void {
-    const usage = response.usage;
-    if (!usage) return;
-
-    const cachedTokens = usage.input_tokens_details.cached_tokens;
-    const reasoningTokens = usage.output_tokens_details.reasoning_tokens;
-    const summary =
-      `OpenAI ${phase} [${response.model}]: ${usage.input_tokens} input ` +
-      `(${cachedTokens} cached), ${usage.output_tokens} output ` +
-      `(${reasoningTokens} reasoning), ${usage.total_tokens} total`;
-
-    this.memory.record({
-      kind: "api_usage",
-      summary,
-      payload: {
+  private async createTrackedResponse(
+    params: ResponseCreateParamsNonStreaming,
+    phase: string,
+    trigger: string
+  ): Promise<Response> {
+    const requestId = crypto.randomUUID();
+    const occurredAt = new Date().toISOString();
+    const startedAt = Date.now();
+    try {
+      const response = await this.client.responses.create({
+        ...params,
+        service_tier: "default"
+      });
+      const completedAt = new Date().toISOString();
+      const usage = response.usage;
+      const record = this.memory.recordApiUsage({
+        requestId,
+        occurredAt,
+        completedAt,
+        provider: "openai",
+        endpoint: "responses",
+        requestedModel: String(params.model),
         responseId: response.id,
-        model: response.model,
-        requestedModel: this.options.model,
-        reasoningEffort: this.options.reasoningEffort,
+        responseModel: response.model,
+        serviceTier: response.service_tier ?? "default",
         phase,
-        usage
-      },
-      importance: 3
-    });
-    console.log(`[usage] ${summary}`);
+        trigger,
+        reasoningEffort: this.options.reasoningEffort,
+        status: normalizeApiUsageStatus(response.status),
+        latencyMs: Date.now() - startedAt,
+        usage: usage
+          ? {
+              inputTokens: usage.input_tokens,
+              cachedInputTokens: usage.input_tokens_details.cached_tokens,
+              cacheWriteTokens:
+                usage.input_tokens_details.cache_write_tokens,
+              outputTokens: usage.output_tokens,
+              reasoningTokens:
+                usage.output_tokens_details.reasoning_tokens,
+              totalTokens: usage.total_tokens
+            }
+          : undefined,
+        webSearchCalls: response.output.filter(
+          (item) => item.type === "web_search_call"
+        ).length,
+        rawUsage: usage
+      });
+      const cost =
+        record.estimatedCostUsdMicros === undefined
+          ? "cost unknown"
+          : `$${(record.estimatedCostUsdMicros / 1_000_000).toFixed(6)}`;
+      console.log(
+        `[usage] OpenAI ${phase} [${response.model}]: ` +
+          `${usage?.total_tokens ?? "unknown"} tokens, ${cost}`
+      );
+      return response;
+    } catch (error) {
+      const completedAt = new Date().toISOString();
+      const message = error instanceof Error ? error.message : String(error);
+      this.memory.recordApiUsage({
+        requestId,
+        occurredAt,
+        completedAt,
+        provider: "openai",
+        endpoint: "responses",
+        requestedModel: String(params.model),
+        serviceTier: "default",
+        phase,
+        trigger,
+        reasoningEffort: this.options.reasoningEffort,
+        status: "failed",
+        latencyMs: Date.now() - startedAt,
+        webSearchCalls: 0,
+        errorClass:
+          error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: message
+      });
+      throw error;
+    }
   }
 
   private hasTokenBudget(phase: string): boolean {
@@ -519,6 +579,15 @@ Keep internal reflections concise. Put player-facing communication through speak
 
 function formatPosition(position: { x: number; y: number; z: number }): string {
   return `${position.x}, ${position.y}, ${position.z}`;
+}
+
+function normalizeApiUsageStatus(
+  status: Response["status"]
+): "completed" | "incomplete" | "failed" | "cancelled" {
+  if (status === "incomplete" || status === "failed" || status === "cancelled") {
+    return status;
+  }
+  return "completed";
 }
 
 function formatActionName(name: string): string {

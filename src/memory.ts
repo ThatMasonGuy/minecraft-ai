@@ -1,6 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import {
+  estimateApiUsageCostUsdMicros,
+  INITIAL_GPT_5_6_LUNA_PRICE,
+  summarizeApiUsage,
+  type ApiPriceVersion,
+  type ApiTokenUsage,
+  type ApiUsageRecord,
+  type ApiUsageSummary,
+  type ApiUsageWrite
+} from "./api-usage.js";
 import type {
   GatherBlocksWorkSpec,
   Goal,
@@ -92,8 +102,61 @@ interface OwnedContainerRow {
   updated_at: string;
 }
 
+interface ApiPriceVersionRow {
+  id: number;
+  provider: string;
+  model: string;
+  service_tier: string;
+  effective_from: string;
+  effective_to: string | null;
+  long_context_threshold: number;
+  short_input_usd_per_million: number;
+  short_cached_input_usd_per_million: number;
+  short_cache_write_usd_per_million: number;
+  short_output_usd_per_million: number;
+  long_input_usd_per_million: number;
+  long_cached_input_usd_per_million: number;
+  long_cache_write_usd_per_million: number;
+  long_output_usd_per_million: number;
+  web_search_usd_per_thousand: number;
+  source_url: string;
+  captured_at: string;
+}
+
+interface ApiUsageRow {
+  id: number;
+  request_id: string;
+  occurred_at: string;
+  completed_at: string;
+  provider: string;
+  endpoint: string;
+  requested_model: string;
+  response_id: string | null;
+  response_model: string | null;
+  service_tier: string | null;
+  phase: string;
+  trigger: string | null;
+  reasoning_effort: string | null;
+  status: ApiUsageRecord["status"];
+  latency_ms: number | null;
+  input_tokens: number | null;
+  cached_input_tokens: number | null;
+  cache_write_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_tokens: number | null;
+  total_tokens: number | null;
+  web_search_calls: number;
+  raw_usage_json: string | null;
+  error_class: string | null;
+  error_message: string | null;
+  price_version_id: number | null;
+  estimated_cost_usd_micros: number | null;
+  pricing_status: ApiUsageRecord["pricingStatus"];
+}
+
 export class EpisodicMemory {
   private readonly db: DatabaseSync;
+  private suppressApiUsageEvent = false;
 
   constructor(databasePath: string) {
     fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -223,6 +286,77 @@ export class EpisodicMemory {
 
       CREATE INDEX IF NOT EXISTS idx_owned_containers_status
       ON owned_containers(status, dimension, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS api_price_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        service_tier TEXT NOT NULL,
+        effective_from TEXT NOT NULL,
+        effective_to TEXT,
+        long_context_threshold INTEGER NOT NULL,
+        short_input_usd_per_million REAL NOT NULL,
+        short_cached_input_usd_per_million REAL NOT NULL,
+        short_cache_write_usd_per_million REAL NOT NULL,
+        short_output_usd_per_million REAL NOT NULL,
+        long_input_usd_per_million REAL NOT NULL,
+        long_cached_input_usd_per_million REAL NOT NULL,
+        long_cache_write_usd_per_million REAL NOT NULL,
+        long_output_usd_per_million REAL NOT NULL,
+        web_search_usd_per_thousand REAL NOT NULL,
+        source_url TEXT NOT NULL,
+        captured_at TEXT NOT NULL,
+        UNIQUE(provider, model, service_tier, effective_from)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_api_prices_lookup
+      ON api_price_versions(
+        provider, model, service_tier, effective_from DESC
+      );
+
+      CREATE TABLE IF NOT EXISTS api_usage_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id TEXT NOT NULL UNIQUE,
+        occurred_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        requested_model TEXT NOT NULL,
+        response_id TEXT,
+        response_model TEXT,
+        service_tier TEXT,
+        phase TEXT NOT NULL,
+        trigger TEXT,
+        reasoning_effort TEXT,
+        status TEXT NOT NULL
+          CHECK(status IN ('completed', 'incomplete', 'failed', 'cancelled')),
+        latency_ms INTEGER,
+        input_tokens INTEGER,
+        cached_input_tokens INTEGER,
+        cache_write_tokens INTEGER,
+        output_tokens INTEGER,
+        reasoning_tokens INTEGER,
+        total_tokens INTEGER,
+        web_search_calls INTEGER NOT NULL DEFAULT 0,
+        raw_usage_json TEXT,
+        error_class TEXT,
+        error_message TEXT,
+        price_version_id INTEGER,
+        estimated_cost_usd_micros INTEGER,
+        pricing_status TEXT NOT NULL CHECK(pricing_status IN ('estimated', 'unknown')),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(price_version_id) REFERENCES api_price_versions(id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_api_usage_response_id
+      ON api_usage_ledger(provider, response_id)
+      WHERE response_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_api_usage_time
+      ON api_usage_ledger(occurred_at ASC, id ASC);
+
+      CREATE INDEX IF NOT EXISTS idx_api_usage_model_time
+      ON api_usage_ledger(response_model, occurred_at ASC);
     `);
     this.ensureColumn(
       "work_orders",
@@ -240,6 +374,8 @@ export class EpisodicMemory {
       "loaded_chunk_ms",
       "INTEGER NOT NULL DEFAULT 0"
     );
+    this.seedApiPrice(INITIAL_GPT_5_6_LUNA_PRICE);
+    this.backfillLegacyApiUsageEvents();
   }
 
   record(event: MemoryEvent): number {
@@ -264,7 +400,11 @@ export class EpisodicMemory {
         event.actor ?? null,
         event.importance ?? 5
       );
-    return Number(result.lastInsertRowid);
+    const eventId = Number(result.lastInsertRowid);
+    if (event.kind === "api_usage") {
+      this.backfillLegacyApiUsageEvent(eventId, now, event.payload);
+    }
+    return eventId;
   }
 
   recent(limit = 30): MemoryEvent[] {
@@ -341,16 +481,156 @@ export class EpisodicMemory {
     return rows.map(toGoal);
   }
 
+  recordApiUsage(input: ApiUsageWrite): ApiUsageRecord {
+    const existing = this.apiUsageByRequestId(input.requestId);
+    if (existing) return existing;
+    const existingResponse = input.responseId
+      ? this.apiUsageByResponseId(input.provider, input.responseId)
+      : undefined;
+    if (existingResponse) return existingResponse;
+
+    const price = this.findApiPrice(
+      input.provider,
+      input.responseModel ?? input.requestedModel,
+      input.serviceTier,
+      input.occurredAt
+    );
+    const estimatedCostUsdMicros =
+      price && input.usage
+        ? estimateApiUsageCostUsdMicros(
+            input.usage,
+            input.webSearchCalls,
+            price
+          )
+        : undefined;
+    this.db
+      .prepare(`
+        INSERT INTO api_usage_ledger (
+          request_id, occurred_at, completed_at, provider, endpoint,
+          requested_model, response_id, response_model, service_tier,
+          phase, trigger, reasoning_effort, status, latency_ms,
+          input_tokens, cached_input_tokens, cache_write_tokens,
+          output_tokens, reasoning_tokens, total_tokens, web_search_calls,
+          raw_usage_json, error_class, error_message,
+          price_version_id, estimated_cost_usd_micros, pricing_status,
+          created_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?
+        )
+      `)
+      .run(
+        input.requestId,
+        input.occurredAt,
+        input.completedAt,
+        input.provider,
+        input.endpoint,
+        input.requestedModel,
+        input.responseId ?? null,
+        input.responseModel ?? null,
+        input.serviceTier ?? null,
+        input.phase,
+        input.trigger ?? null,
+        input.reasoningEffort ?? null,
+        input.status,
+        input.latencyMs ?? null,
+        input.usage?.inputTokens ?? null,
+        input.usage?.cachedInputTokens ?? null,
+        input.usage?.cacheWriteTokens ?? null,
+        input.usage?.outputTokens ?? null,
+        input.usage?.reasoningTokens ?? null,
+        input.usage?.totalTokens ?? null,
+        Math.max(0, Math.round(input.webSearchCalls)),
+        input.rawUsage === undefined ? null : JSON.stringify(input.rawUsage),
+        input.errorClass ?? null,
+        input.errorMessage?.slice(0, 2_000) ?? null,
+        price?.id ?? null,
+        estimatedCostUsdMicros ?? null,
+        estimatedCostUsdMicros === undefined ? "unknown" : "estimated",
+        new Date().toISOString()
+      );
+
+    const record = this.apiUsageByRequestId(input.requestId);
+    if (!record) throw new Error(`API usage ${input.requestId} was not recorded`);
+    const usage = input.usage;
+    const cost =
+      estimatedCostUsdMicros === undefined
+        ? "cost unknown"
+        : `estimated $${(estimatedCostUsdMicros / 1_000_000).toFixed(6)}`;
+    if (!this.suppressApiUsageEvent) {
+      this.record({
+        occurredAt: input.occurredAt,
+        kind: "api_usage",
+        summary:
+          `${input.provider} ${input.phase} [${input.responseModel ?? input.requestedModel}] ` +
+          `${usage?.totalTokens ?? "unknown"} tokens, ${cost}`,
+        payload: {
+          requestId: input.requestId,
+          responseId: input.responseId,
+          model: input.responseModel,
+          requestedModel: input.requestedModel,
+          serviceTier: input.serviceTier,
+          phase: input.phase,
+          reasoningEffort: input.reasoningEffort,
+          status: input.status,
+          latencyMs: input.latencyMs,
+          webSearchCalls: input.webSearchCalls,
+          usage: input.rawUsage ?? input.usage,
+          estimatedCostUsdMicros,
+          pricingStatus: record.pricingStatus
+        },
+        importance: input.status === "failed" ? 7 : 3
+      });
+    }
+    return record;
+  }
+
+  addApiPriceVersion(price: ApiPriceVersion): ApiPriceVersion {
+    this.seedApiPrice(price);
+    const row = this.db
+      .prepare(`
+        SELECT * FROM api_price_versions
+        WHERE provider = ? AND model = ? AND service_tier = ?
+          AND effective_from = ?
+      `)
+      .get(
+        price.provider,
+        price.model,
+        price.serviceTier,
+        price.effectiveFrom
+      ) as ApiPriceVersionRow | undefined;
+    if (!row) throw new Error(`API price version for ${price.model} was not recorded`);
+    return toApiPriceVersion(row);
+  }
+
+  apiUsageRecords(occurredAt?: string): ApiUsageRecord[] {
+    const rows = (occurredAt
+      ? this.db
+          .prepare(`
+            SELECT * FROM api_usage_ledger
+            WHERE occurred_at >= ?
+            ORDER BY occurred_at ASC, id ASC
+          `)
+          .all(occurredAt)
+      : this.db
+          .prepare(`
+            SELECT * FROM api_usage_ledger
+            ORDER BY occurred_at ASC, id ASC
+          `)
+          .all()) as unknown as ApiUsageRow[];
+    return rows.map(toApiUsageRecord);
+  }
+
+  apiUsageSummary(timezone = "Australia/Brisbane"): ApiUsageSummary {
+    return summarizeApiUsage(this.apiUsageRecords(), timezone);
+  }
+
   tokenUsageSince(occurredAt: string): number {
     const row = this.db
       .prepare(`
-        SELECT COALESCE(
-          SUM(CAST(json_extract(payload_json, '$.usage.total_tokens') AS INTEGER)),
-          0
-        ) AS total_tokens
-        FROM events
-        WHERE kind = 'api_usage'
-          AND occurred_at >= ?
+        SELECT COALESCE(SUM(total_tokens), 0) AS total_tokens
+        FROM api_usage_ledger
+        WHERE occurred_at >= ?
       `)
       .get(occurredAt) as { total_tokens: number };
     return Number(row.total_tokens);
@@ -366,11 +646,10 @@ export class EpisodicMemory {
       .prepare(`
         SELECT
           occurred_at,
-          CAST(json_extract(payload_json, '$.usage.total_tokens') AS INTEGER)
-            AS total_tokens
-        FROM events
-        WHERE kind = 'api_usage'
-          AND occurred_at >= ?
+          total_tokens
+        FROM api_usage_ledger
+        WHERE occurred_at >= ?
+          AND total_tokens IS NOT NULL
         ORDER BY occurred_at ASC, id ASC
       `)
       .all(windowStart) as unknown as Array<{
@@ -813,8 +1092,185 @@ export class EpisodicMemory {
     return this.goalById(id);
   }
 
+  checkpoint(): void {
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  }
+
   close(): void {
     this.db.close();
+  }
+
+  private seedApiPrice(price: ApiPriceVersion): void {
+    this.db
+      .prepare(`
+        INSERT OR IGNORE INTO api_price_versions (
+          provider, model, service_tier, effective_from, effective_to,
+          long_context_threshold,
+          short_input_usd_per_million,
+          short_cached_input_usd_per_million,
+          short_cache_write_usd_per_million,
+          short_output_usd_per_million,
+          long_input_usd_per_million,
+          long_cached_input_usd_per_million,
+          long_cache_write_usd_per_million,
+          long_output_usd_per_million,
+          web_search_usd_per_thousand,
+          source_url, captured_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        price.provider,
+        price.model,
+        price.serviceTier,
+        price.effectiveFrom,
+        price.effectiveTo ?? null,
+        price.longContextThreshold,
+        price.shortInputUsdPerMillion,
+        price.shortCachedInputUsdPerMillion,
+        price.shortCacheWriteUsdPerMillion,
+        price.shortOutputUsdPerMillion,
+        price.longInputUsdPerMillion,
+        price.longCachedInputUsdPerMillion,
+        price.longCacheWriteUsdPerMillion,
+        price.longOutputUsdPerMillion,
+        price.webSearchUsdPerThousand,
+        price.sourceUrl,
+        price.capturedAt
+      );
+  }
+
+  private findApiPrice(
+    provider: string,
+    model: string,
+    serviceTier: string | undefined,
+    occurredAt: string
+  ): ApiPriceVersion | undefined {
+    if (!serviceTier) return undefined;
+    const row = this.db
+      .prepare(`
+        SELECT * FROM api_price_versions
+        WHERE provider = ?
+          AND model = ?
+          AND service_tier = ?
+          AND effective_from <= ?
+          AND (effective_to IS NULL OR effective_to > ?)
+        ORDER BY effective_from DESC, id DESC
+        LIMIT 1
+      `)
+      .get(
+        provider,
+        model,
+        serviceTier,
+        occurredAt,
+        occurredAt
+      ) as ApiPriceVersionRow | undefined;
+    return row ? toApiPriceVersion(row) : undefined;
+  }
+
+  private apiUsageByRequestId(requestId: string): ApiUsageRecord | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM api_usage_ledger WHERE request_id = ?")
+      .get(requestId) as ApiUsageRow | undefined;
+    return row ? toApiUsageRecord(row) : undefined;
+  }
+
+  private apiUsageByResponseId(
+    provider: string,
+    responseId: string
+  ): ApiUsageRecord | undefined {
+    const row = this.db
+      .prepare(`
+        SELECT * FROM api_usage_ledger
+        WHERE provider = ? AND response_id = ?
+      `)
+      .get(provider, responseId) as ApiUsageRow | undefined;
+    return row ? toApiUsageRecord(row) : undefined;
+  }
+
+  private backfillLegacyApiUsageEvents(): void {
+    const rows = this.db
+      .prepare(`
+        SELECT id, occurred_at, payload_json
+        FROM events
+        WHERE kind = 'api_usage'
+        ORDER BY id ASC
+      `)
+      .all() as unknown as Array<{
+      id: number;
+      occurred_at: string;
+      payload_json: string | null;
+    }>;
+    for (const row of rows) {
+      let payload: unknown;
+      try {
+        payload = row.payload_json ? JSON.parse(row.payload_json) : undefined;
+      } catch {
+        payload = undefined;
+      }
+      this.backfillLegacyApiUsageEvent(row.id, row.occurred_at, payload);
+    }
+  }
+
+  private backfillLegacyApiUsageEvent(
+    eventId: number,
+    occurredAt: string,
+    payload: unknown
+  ): void {
+    const object = asRecord(payload);
+    const rawUsage = asRecord(object.usage);
+    const requestId = readString(object.requestId) ?? `legacy-event-${eventId}`;
+    if (this.apiUsageByRequestId(requestId)) return;
+    const responseId = readString(object.responseId);
+    if (responseId && this.apiUsageByResponseId("openai", responseId)) return;
+    const requestedModel =
+      readString(object.requestedModel) ??
+      readString(object.model) ??
+      "unknown";
+    const responseModel = readString(object.model);
+    const totalTokens = readNumber(rawUsage.total_tokens);
+    const inputDetails = asRecord(rawUsage.input_tokens_details);
+    const outputDetails = asRecord(rawUsage.output_tokens_details);
+    const usage: ApiTokenUsage | undefined =
+      totalTokens === undefined
+        ? undefined
+        : {
+            inputTokens: readNumber(rawUsage.input_tokens),
+            cachedInputTokens: readNumber(inputDetails.cached_tokens),
+            cacheWriteTokens: readNumber(inputDetails.cache_write_tokens),
+            outputTokens: readNumber(rawUsage.output_tokens),
+            reasoningTokens: readNumber(outputDetails.reasoning_tokens),
+            totalTokens
+          };
+    const statusValue = readString(object.status);
+    const status: ApiUsageWrite["status"] =
+      statusValue === "failed" ||
+      statusValue === "cancelled" ||
+      statusValue === "incomplete"
+        ? statusValue
+        : "completed";
+    this.suppressApiUsageEvent = true;
+    try {
+      this.recordApiUsage({
+        requestId,
+        occurredAt,
+        completedAt: occurredAt,
+        provider: "openai",
+        endpoint: "responses",
+        requestedModel,
+        responseId,
+        responseModel,
+        serviceTier: readString(object.serviceTier),
+        phase: readString(object.phase) ?? "legacy event",
+        reasoningEffort: readString(object.reasoningEffort),
+        status,
+        latencyMs: readNumber(object.latencyMs),
+        usage,
+        webSearchCalls: readNumber(object.webSearchCalls) ?? 0,
+        rawUsage: rawUsage.total_tokens === undefined ? undefined : rawUsage
+      });
+    } finally {
+      this.suppressApiUsageEvent = false;
+    }
   }
 
   private goalById(id: number): Goal {
@@ -865,6 +1321,83 @@ function toMemoryEvent(row: EventRow): MemoryEvent {
     actor: row.actor ?? undefined,
     importance: row.importance
   };
+}
+
+function toApiPriceVersion(row: ApiPriceVersionRow): ApiPriceVersion {
+  return {
+    id: row.id,
+    provider: "openai",
+    model: row.model,
+    serviceTier: row.service_tier,
+    effectiveFrom: row.effective_from,
+    effectiveTo: row.effective_to ?? undefined,
+    longContextThreshold: row.long_context_threshold,
+    shortInputUsdPerMillion: row.short_input_usd_per_million,
+    shortCachedInputUsdPerMillion: row.short_cached_input_usd_per_million,
+    shortCacheWriteUsdPerMillion: row.short_cache_write_usd_per_million,
+    shortOutputUsdPerMillion: row.short_output_usd_per_million,
+    longInputUsdPerMillion: row.long_input_usd_per_million,
+    longCachedInputUsdPerMillion: row.long_cached_input_usd_per_million,
+    longCacheWriteUsdPerMillion: row.long_cache_write_usd_per_million,
+    longOutputUsdPerMillion: row.long_output_usd_per_million,
+    webSearchUsdPerThousand: row.web_search_usd_per_thousand,
+    sourceUrl: row.source_url,
+    capturedAt: row.captured_at
+  };
+}
+
+function toApiUsageRecord(row: ApiUsageRow): ApiUsageRecord {
+  const hasUsage = row.total_tokens !== null;
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    occurredAt: row.occurred_at,
+    completedAt: row.completed_at,
+    provider: "openai",
+    endpoint: "responses",
+    requestedModel: row.requested_model,
+    responseId: row.response_id ?? undefined,
+    responseModel: row.response_model ?? undefined,
+    serviceTier: row.service_tier ?? undefined,
+    phase: row.phase,
+    trigger: row.trigger ?? undefined,
+    reasoningEffort: row.reasoning_effort ?? undefined,
+    status: row.status,
+    latencyMs: row.latency_ms ?? undefined,
+    usage: hasUsage
+      ? {
+          inputTokens: row.input_tokens ?? undefined,
+          cachedInputTokens: row.cached_input_tokens ?? undefined,
+          cacheWriteTokens: row.cache_write_tokens ?? undefined,
+          outputTokens: row.output_tokens ?? undefined,
+          reasoningTokens: row.reasoning_tokens ?? undefined,
+          totalTokens: row.total_tokens!
+        }
+      : undefined,
+    webSearchCalls: row.web_search_calls,
+    rawUsage: row.raw_usage_json
+      ? JSON.parse(row.raw_usage_json)
+      : undefined,
+    errorClass: row.error_class ?? undefined,
+    errorMessage: row.error_message ?? undefined,
+    priceVersionId: row.price_version_id ?? undefined,
+    estimatedCostUsdMicros: row.estimated_cost_usd_micros ?? undefined,
+    pricingStatus: row.pricing_status
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function toGoal(row: GoalRow): Goal {
