@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Extracted recipe resolution, bounded crafting, crafting-table interaction, furnace loading, fuel policy, output collection, and production outcomes into ProductionSystem; actions and project workflows no longer call Mineflayer crafting or furnace primitives.
 - Extracted blueprint placement, support selection, utility-block placement, traversal scaffolding, stair landings, material checks, retries, and placement verification into BuildingSystem; movement, actions, and project workflows no longer place blocks directly.
 - Extracted block safety classification, tool-tier selection, dig retries/timeouts, protected-block rules, falling-block clearance, exact-cell excavation, and collection positioning into MiningSystem; actions, projects, and recovery no longer dig directly.
 - Extracted dropped-item selection, filtering, collection routing, clear confirmation, and collection telemetry into LootingSystem; combat and death recovery now share the same deterministic collector.
@@ -23,6 +24,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added production recipe and unavailable-material coverage plus enforcement against crafting or furnace access outside ProductionSystem.
 - Added building placement and missing-material coverage plus enforcement against block placement outside BuildingSystem.
 - Added mining authority coverage and enforcement that rejects digging or diggability logic outside MiningSystem.
 - Added focused looting selection and collection-event coverage plus enforcement against parallel dropped-item collectors.

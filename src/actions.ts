@@ -14,6 +14,7 @@ import type { MovementSystem } from "./movement-system.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { BuildingSystem } from "./building-system.js";
+import type { ProductionSystem } from "./production-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -35,6 +36,7 @@ export class MinecraftActions {
     private readonly inventory: InventorySystem,
     private readonly mining: MiningSystem,
     private readonly building: BuildingSystem,
+    private readonly production: ProductionSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -625,8 +627,6 @@ export class MinecraftActions {
         count: z.number().int().min(1).max(64)
       })
       .parse(raw);
-    const item = this.bot.registry.itemsByName[item_name];
-    if (!item) return fail(`Unknown item: ${item_name}`);
     const snapshot = this.requireSnapshot();
     const tableObservation = snapshot.visibleBlocks.find(
       (block) => block.name === "crafting_table" && block.distance <= 5
@@ -636,17 +636,14 @@ export class MinecraftActions {
           new Vec3(tableObservation.x, tableObservation.y, tableObservation.z)
         ) ?? null
       : null;
-    const recipes = this.bot.recipesFor(item.id, null, count, table);
-    const recipe = recipes[0];
-    if (!recipe) {
-      return fail(
-        `No currently craftable recipe for ${item_name}; ingredients or a visible crafting table may be missing`
-      );
-    }
-    const executions = Math.ceil(count / Math.max(1, recipe.result.count));
-    await this.bot.craft(recipe, executions, table ?? undefined);
+    const result = await this.production.produce({
+      itemName: item_name,
+      count,
+      craftingTable: table ?? undefined
+    });
+    if (result.status === "unavailable") return fail(result.detail);
     return ok(
-      `Crafted at least ${count} ${item_name} in ${executions} recipe execution(s)`,
+      `Crafted ${result.producedCount} ${item_name} in ${result.executions} recipe execution(s)`,
       this.perception.observe()
     );
   }

@@ -20,6 +20,7 @@ import type { MovementSystem } from "./movement-system.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { BuildingSystem } from "./building-system.js";
+import type { ProductionSystem } from "./production-system.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
@@ -88,6 +89,7 @@ export class ProjectExecutor {
     private readonly inventory: InventorySystem,
     private readonly mining: MiningSystem,
     private readonly building: BuildingSystem,
+    private readonly production: ProductionSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -493,11 +495,6 @@ export class ProjectExecutor {
       this.finishStep(project, `Crafted ${current} ${spec.itemName}`);
       return;
     }
-    const item = this.bot.registry.itemsByName[spec.itemName];
-    if (!item) {
-      this.blockProject(project, `Unknown craft result ${spec.itemName}`);
-      return;
-    }
     const plannedTable = spec.craftingTableAt
       ? this.blockAtRelative(project, spec.craftingTableAt)
       : null;
@@ -596,8 +593,11 @@ export class ProjectExecutor {
           `${this.bot.entity.position.z.toFixed(1)}`
       );
     }
-    const recipe = this.bot.recipesFor(item.id, null, 1, table ?? null)[0];
-    if (!recipe) {
+    const result = await this.production.craftOne(
+      spec.itemName,
+      table ?? undefined
+    );
+    if (result.status === "unavailable") {
       if (
         this.reopenCraftMaterialProducer(
           project,
@@ -609,13 +609,9 @@ export class ProjectExecutor {
       ) {
         return;
       }
-      this.blockProject(project, `No current recipe for ${spec.itemName}`);
+      this.blockProject(project, result.detail);
       return;
     }
-    // Mineflayer's bulk crafting can partially mutate inventory and then throw
-    // "missing ingredient". One execution per deterministic tick gives every
-    // mutation a persisted inventory checkpoint before the next craft.
-    await this.bot.craft(recipe, 1, table ?? undefined);
   }
 
   private async restoreCraftingTable(
@@ -625,12 +621,8 @@ export class ProjectExecutor {
       .items()
       .find((item) => item.name === "crafting_table");
     if (!carried) {
-      const tableItem = this.bot.registry.itemsByName.crafting_table;
-      const recipe = tableItem
-        ? this.bot.recipesFor(tableItem.id, null, 1, null)[0]
-        : undefined;
-      if (recipe) {
-        await this.bot.craft(recipe, 1);
+      const result = await this.production.craftOne("crafting_table");
+      if (result.status === "produced") {
         carried = this.inventory
           .items()
           .find((item) => item.name === "crafting_table");
@@ -771,57 +763,24 @@ export class ProjectExecutor {
       this.blockProject(project, "Required furnace is not at the planned location");
       return;
     }
-    await this.movement.goNear(furnaceBlock.position, 2);
-    const furnace = await this.bot.openFurnace(furnaceBlock);
-    try {
-      const output = furnace.outputItem();
-      if (output) {
-        await furnace.takeOutput();
-        return;
-      }
-      if (furnace.inputItem()) {
-        this.report(
-          "waiting",
-          `Smelting ${spec.outputItemName.replaceAll("_", " ")}`,
-          `${current}/${spec.targetCount}`
-        );
-        return;
-      }
-
-      const input = this.inventory
-        .items()
-        .find((item) => item.name === spec.inputItemName);
-      const fuel = this.inventory
-        .items()
-        .find((item) => item.name === spec.fuelItemName);
-      if (!input) {
-        this.blockProject(project, `Missing smelting input ${spec.inputItemName}`);
-        return;
-      }
-      if (!fuel && !furnace.fuelItem()) {
-        this.blockProject(project, `Missing furnace fuel ${spec.fuelItemName}`);
-        return;
-      }
-      const missing = spec.targetCount - current;
-      await furnace.putInput(
-        input.type,
-        input.metadata,
-        Math.min(missing, input.count)
-      );
-      if (!furnace.fuelItem() && fuel) {
-        await furnace.putFuel(
-          fuel.type,
-          fuel.metadata,
-          Math.min(spec.fuelCount, fuel.count)
-        );
-      }
+    const result = await this.production.smeltStep({
+      furnace: furnaceBlock,
+      inputItemName: spec.inputItemName,
+      fuelItemName: spec.fuelItemName,
+      fuelCount: spec.fuelCount,
+      outputItemName: spec.outputItemName,
+      targetCount: spec.targetCount
+    });
+    if (result.status === "blocked") {
+      this.blockProject(project, result.detail);
+      return;
+    }
+    if (result.status !== "output_collected") {
       this.report(
         "waiting",
         `Smelting ${spec.outputItemName.replaceAll("_", " ")}`,
         `${current}/${spec.targetCount}`
       );
-    } finally {
-      furnace.close();
     }
   }
 
@@ -1518,11 +1477,7 @@ export class ProjectExecutor {
     _heading: "north" | "south" | "east" | "west"
   ): Promise<EmergencyToolResult> {
     if (this.inventory.count("stick") < 2) {
-      const stick = this.bot.registry.itemsByName.stick;
-      const recipe = stick
-        ? this.bot.recipesFor(stick.id, null, 1, null)[0]
-        : undefined;
-      if (recipe) await this.bot.craft(recipe, 1);
+      await this.production.craftOne("stick");
     }
     if (
       this.inventory.count("cobblestone") < 3 ||
@@ -1564,11 +1519,8 @@ export class ProjectExecutor {
       }
     }
     if (localTable) {
-      const pickaxe = this.bot.registry.itemsByName.stone_pickaxe;
-      if (!pickaxe) return "impossible";
-      const recipe = this.bot.recipesFor(pickaxe.id, null, 1, localTable)[0];
-      if (!recipe) return "impossible";
-      await this.bot.craft(recipe, 1, localTable);
+      const result = await this.production.craftOne("stone_pickaxe", localTable);
+      if (result.status === "unavailable") return "impossible";
       return this.hasPickaxe() ? "crafted" : "impossible";
     }
     if (!project.anchor) return "impossible";
@@ -1594,12 +1546,8 @@ export class ProjectExecutor {
       }
     }
     if (!table || table.name !== "crafting_table") return "impossible";
-    await this.movement.goNear(table.position, 2);
-    const item = this.bot.registry.itemsByName.stone_pickaxe;
-    if (!item) return "impossible";
-    const recipe = this.bot.recipesFor(item.id, null, 1, table)[0];
-    if (!recipe) return "impossible";
-    await this.bot.craft(recipe, 1, table);
+    const result = await this.production.craftOne("stone_pickaxe", table);
+    if (result.status === "unavailable") return "impossible";
     return this.hasPickaxe() ? "crafted" : "impossible";
   }
 
@@ -1633,11 +1581,8 @@ export class ProjectExecutor {
       .items()
       .find((item) => item.name === "crafting_table");
     if (!tableItem) {
-      const table = this.bot.registry.itemsByName.crafting_table;
-      if (!table) return undefined;
-      const recipe = this.bot.recipesFor(table.id, null, 1, null)[0];
-      if (!recipe) return undefined;
-      await this.bot.craft(recipe, 1);
+      const result = await this.production.craftOne("crafting_table");
+      if (result.status === "unavailable") return undefined;
       tableItem = this.inventory
         .items()
         .find((item) => item.name === "crafting_table");
