@@ -9,6 +9,7 @@ All notable changes to this project are recorded in this file.
 - Centralized deterministic executor priority and Pathfinder mutation ownership in an XState-backed runtime coordinator, so higher-priority safety work preempts lower-priority movement and unowned movement is rejected.
 - Restricted the viewer's default bind to loopback and added HTTP security headers, automatic bearer authentication for the operator API, and rate limiting for paid planning requests.
 - Replaced raw copying of the WAL-backed memory database in world snapshots with Node's native SQLite online-backup API.
+- Updated Webpack past its published build-time SSRF advisories and forced patched UUID implementations in Mineflayer's Microsoft and legacy authentication dependency paths.
 
 ### Added
 
