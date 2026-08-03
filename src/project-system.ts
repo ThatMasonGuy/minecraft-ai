@@ -1,7 +1,6 @@
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
-import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { Perception } from "./perception.js";
@@ -79,7 +78,7 @@ interface ProspectState {
 type EmergencyToolResult = "crafted" | "working" | "impossible";
 const MAX_PROSPECT_REBASES = 8;
 
-export class ProjectExecutor {
+export class ProjectSystem {
   private timer?: NodeJS.Timeout;
   private running = false;
   private lastState?: string;
@@ -87,7 +86,6 @@ export class ProjectExecutor {
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
-    private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
     private readonly mining: MiningSystem,
@@ -111,6 +109,10 @@ export class ProjectExecutor {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     this.execution?.release();
+  }
+
+  isActive(): boolean {
+    return this.memory.activeProject() !== undefined;
   }
 
   private runTick(): void {
@@ -263,14 +265,9 @@ export class ProjectExecutor {
       y: Math.round(this.bot.entity.position.y),
       z: Math.round(state.origin.z + offset.z * spec.waypointSpacing)
     };
-    const result = await this.actions.execute("move_to_surface", {
-      x: target.x,
-      y: target.y,
-      z: target.z,
-      range: 4
-    });
-    if (!result.ok) {
-      console.warn(`[project] Site survey movement failed: ${result.message}`);
+    const result = await this.movement.reachSurfaceArea(target, 4);
+    if (result.status === "blocked") {
+      console.warn(`[project] Site survey movement failed: ${result.detail}`);
     }
   }
 
@@ -287,10 +284,10 @@ export class ProjectExecutor {
 
     for (let dx = 0; dx < width; dx += 1) {
       for (let dz = 0; dz < depth; dz += 1) {
-        const ground = this.bot.blockAt(new Vec3(minX + dx, feetY - 1, minZ + dz));
+        const ground = this.perception.blockAt(new Vec3(minX + dx, feetY - 1, minZ + dz));
         if (!isSolid(ground?.name, ground?.boundingBox)) return undefined;
         for (let dy = 0; dy < clearanceHeight; dy += 1) {
-          const block = this.bot.blockAt(new Vec3(minX + dx, feetY + dy, minZ + dz));
+          const block = this.perception.blockAt(new Vec3(minX + dx, feetY + dy, minZ + dz));
           if (!block || !isReplaceableBlockName(block.name)) return undefined;
         }
       }
@@ -589,7 +586,7 @@ export class ProjectExecutor {
       }
     }
     if (table) {
-      table = this.bot.blockAt(table.position) ?? table;
+      table = this.perception.blockAt(table.position) ?? table;
       await this.movement.face(table.position.offset(0.5, 0.5, 0.5));
       console.log(
         `[project] Using crafting table at ${table.position.x}, ` +
@@ -849,12 +846,12 @@ export class ProjectExecutor {
         `Mining visible ${visibleOre.name.replaceAll("_", " ")}`,
         `${count}/${spec.targetCount} ${spec.itemName.replaceAll("_", " ")}`
       );
-      const result = await this.actions.execute("mine_visible_block", {
-        x: visibleOre.x,
-        y: visibleOre.y,
-        z: visibleOre.z
+      const result = await this.mining.mineBlock({
+        position: { x: visibleOre.x, y: visibleOre.y, z: visibleOre.z },
+        requireVisible: true
       });
-      if (!result.ok) throw new Error(result.message);
+      if (result.status === "blocked") throw new Error(result.detail);
+      if (result.status === "already_clear") return;
       state.excavatedBlocks += 1;
       this.memory.saveProject(project);
       return;
@@ -879,7 +876,7 @@ export class ProjectExecutor {
           headingVector(descentHeading).z * previousDepth
       };
       const currentCell = this.bot.entity.position.floored();
-      const previousBlock = this.bot.blockAt(
+      const previousBlock = this.perception.blockAt(
         new Vec3(previous.x, previous.y, previous.z)
       );
       if (
@@ -896,7 +893,7 @@ export class ProjectExecutor {
           state.surfaceOrigin.y += 1;
         } catch (error) {
           const safeCell = this.bot.entity.position.floored();
-          const floor = this.bot.blockAt(safeCell.offset(0, -1, 0));
+          const floor = this.perception.blockAt(safeCell.offset(0, -1, 0));
           if (!floor || !isSolid(floor.name, floor.boundingBox)) throw error;
           const direction = headingVector(descentHeading);
           state.surfaceOrigin = {
@@ -1049,7 +1046,7 @@ export class ProjectExecutor {
     const next = route[state.routeIndex];
     if (!next) {
       const settled = this.bot.entity.position.floored();
-      const floor = this.bot.blockAt(settled.offset(0, -1, 0));
+      const floor = this.perception.blockAt(settled.offset(0, -1, 0));
       if (
         floor &&
         isSolid(floor.name, floor.boundingBox) &&
@@ -1113,7 +1110,7 @@ export class ProjectExecutor {
       this.memory.saveProject(project);
     } catch (error) {
       const settled = this.bot.entity.position.floored();
-      const floor = this.bot.blockAt(settled.offset(0, -1, 0));
+      const floor = this.perception.blockAt(settled.offset(0, -1, 0));
       if (
         Math.abs(settled.y - next.y) <= 2 &&
         Math.hypot(settled.x - next.x, settled.z - next.z) <= 2 &&
@@ -1199,7 +1196,7 @@ export class ProjectExecutor {
     const state = step.state as ProspectState;
     if ((state.rebases ?? 0) >= MAX_PROSPECT_REBASES) return undefined;
     const settled = this.bot.entity.position.floored();
-    const floor = this.bot.blockAt(settled.offset(0, -1, 0));
+    const floor = this.perception.blockAt(settled.offset(0, -1, 0));
     if (!floor || !isSolid(floor.name, floor.boundingBox)) return undefined;
 
     this.rebaseProspectRoute(project, state, step.spec, settled);
@@ -1276,15 +1273,15 @@ export class ProjectExecutor {
       }
     }
     const nearest = candidates.sort((a, b) => {
-      const aBlock = this.bot.blockAt(new Vec3(a.x, a.y, a.z));
-      const bBlock = this.bot.blockAt(new Vec3(b.x, b.y, b.z));
+      const aBlock = this.perception.blockAt(new Vec3(a.x, a.y, a.z));
+      const bBlock = this.perception.blockAt(new Vec3(b.x, b.y, b.z));
       const aReachable = aBlock ? this.mining.canMine(a) : false;
       const bReachable = bBlock ? this.mining.canMine(b) : false;
       if (aReachable !== bReachable) return aReachable ? -1 : 1;
       return a.distance - b.distance;
     })[0];
     if (!nearest) return undefined;
-    const block = this.bot.blockAt(
+    const block = this.perception.blockAt(
       new Vec3(nearest.x, nearest.y, nearest.z)
     );
     return block && this.mining.canMine(nearest) ? nearest : undefined;
@@ -1406,13 +1403,10 @@ export class ProjectExecutor {
       "Searching visibly for food animals",
       `Waypoint ${state.forageWaypoint}`
     );
-    const movement = await this.actions.execute(
-      "move_to_surface",
-      { ...waypoint, range: 4 }
-    );
-    if (!movement.ok) {
+    const movement = await this.movement.reachSurfaceArea(waypoint, 4);
+    if (movement.status === "blocked") {
       console.warn(
-        `[project] Food search movement failed: ${movement.message}`
+        `[project] Food search movement failed: ${movement.detail}`
       );
     }
     return true;
@@ -1522,7 +1516,7 @@ export class ProjectExecutor {
     if (!table || table.name !== "crafting_table") {
       for (let dx = -4; dx <= 4 && !table; dx += 1) {
         for (let dz = -4; dz <= 4 && !table; dz += 1) {
-          const candidate = this.bot.blockAt(
+          const candidate = this.perception.blockAt(
             new Vec3(project.anchor.x + dx, project.anchor.y, project.anchor.z + dz)
           );
           if (candidate?.name === "crafting_table") table = candidate;
@@ -1539,7 +1533,7 @@ export class ProjectExecutor {
     for (const step of project.steps) {
       const position = (step.state as ProspectState).portableTable;
       if (!position) continue;
-      const block = this.bot.blockAt(
+      const block = this.perception.blockAt(
         new Vec3(position.x, position.y, position.z)
       );
       if (block?.name === "crafting_table") return block;
@@ -1552,7 +1546,7 @@ export class ProjectExecutor {
     for (let dy = -2; dy <= 2; dy += 1) {
       for (let dx = -radius; dx <= radius; dx += 1) {
         for (let dz = -radius; dz <= radius; dz += 1) {
-          const block = this.bot.blockAt(origin.offset(dx, dy, dz));
+          const block = this.perception.blockAt(origin.offset(dx, dy, dz));
           if (block?.name === "crafting_table") return block;
         }
       }
@@ -1671,13 +1665,8 @@ export class ProjectExecutor {
         "Returning to the storage site",
         `${Math.ceil(distance)} blocks from the owned container`
       );
-      const result = await this.actions.execute("move_to_surface", {
-        x: project.anchor.x,
-        y: project.anchor.y,
-        z: project.anchor.z,
-        range: 4
-      });
-      if (!result.ok) throw new Error(result.message);
+      const result = await this.movement.reachSurfaceArea(project.anchor, 4);
+      if (result.status === "blocked") throw new Error(result.detail);
       return;
     }
     if (distance > 4.5) {
@@ -1747,7 +1736,7 @@ export class ProjectExecutor {
     for (const [index, placement] of spec.placements.entries()) {
       if (completed.has(index)) continue;
       const target = absolutePosition(project.anchor, placement);
-      const existing = this.bot.blockAt(new Vec3(target.x, target.y, target.z));
+      const existing = this.perception.blockAt(new Vec3(target.x, target.y, target.z));
       if (existing && placement.expectedBlockNames.includes(existing.name)) {
         state.completed.push(index);
         this.memory.saveProject(project);
@@ -1847,7 +1836,7 @@ export class ProjectExecutor {
     if (check.kind === "roofed_area") {
       for (let dx = check.min.dx; dx <= check.max.dx; dx += 1) {
         for (let dz = check.min.dz; dz <= check.max.dz; dz += 1) {
-          const block = this.bot.blockAt(
+          const block = this.perception.blockAt(
             new Vec3(anchor.x + dx, anchor.y + check.roofY, anchor.z + dz)
           );
           if (!isSolid(block?.name, block?.boundingBox)) {
@@ -1868,7 +1857,7 @@ export class ProjectExecutor {
               dz === check.min.dz ||
               dz === check.max.dz;
             if (!boundary || openings.has(`${dx},${dy},${dz}`)) continue;
-            const block = this.bot.blockAt(
+            const block = this.perception.blockAt(
               new Vec3(anchor.x + dx, anchor.y + dy, anchor.z + dz)
             );
             if (!isSolid(block?.name, block?.boundingBox)) {
@@ -1888,7 +1877,7 @@ export class ProjectExecutor {
   private blockAtRelative(project: ProjectPlan, position: RelativePosition) {
     if (!project.anchor) return null;
     const absolute = absolutePosition(project.anchor, position);
-    return this.bot.blockAt(new Vec3(absolute.x, absolute.y, absolute.z));
+    return this.perception.blockAt(new Vec3(absolute.x, absolute.y, absolute.z));
   }
 
   private finishStep(project: ProjectPlan, reason: string): void {

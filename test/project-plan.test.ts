@@ -11,7 +11,7 @@ import {
   createBranchMineRoute,
   foodAnimalPriority,
   isProtectedExcavationBlockName
-} from "../src/project-executor.js";
+} from "../src/project-system.js";
 
 describe("project plans", () => {
   it("protects infrastructure from prospect excavation", () => {

@@ -13,7 +13,11 @@ function sourceFiles(): string[] {
 
 describe("enclosed subsystem boundaries", () => {
   it("keeps deterministic workflows independent of the planner action adapter", () => {
-    for (const name of ["acquisition-system.ts", "recovery-system.ts"]) {
+    for (const name of [
+      "acquisition-system.ts",
+      "project-system.ts",
+      "recovery-system.ts"
+    ]) {
       const workflow = fs.readFileSync(path.join(SOURCE_ROOT, name), "utf8");
       expect(workflow).not.toMatch(/MinecraftActions|actions\.execute/);
     }

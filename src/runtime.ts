@@ -26,7 +26,7 @@ import {
   startOperatorServer,
   type OperatorServer
 } from "./operator-server.js";
-import { ProjectExecutor } from "./project-executor.js";
+import { ProjectSystem } from "./project-system.js";
 import {
   RecoverySystem,
   shouldRecoverInventory
@@ -50,7 +50,7 @@ export class MinecraftRuntime {
   private combatSystem?: CombatSystem;
   private lootingSystem?: LootingSystem;
   private acquisitionSystem?: AcquisitionSystem;
-  private projectExecutor?: ProjectExecutor;
+  private projectSystem?: ProjectSystem;
   private recoverySystem?: RecoverySystem;
   private storageSystem?: StorageSystem;
   private survivalSystem?: SurvivalSystem;
@@ -76,7 +76,7 @@ export class MinecraftRuntime {
     this.combatSystem?.stop();
     this.lootingSystem?.stop();
     this.acquisitionSystem?.stop();
-    this.projectExecutor?.stop();
+    this.projectSystem?.stop();
     this.recoverySystem?.stop();
     this.storageSystem?.stop();
     this.survivalSystem?.stop();
@@ -340,11 +340,10 @@ export class MinecraftRuntime {
           () => this.memory.activeWorkOrder() !== undefined
         )
       );
-      this.projectExecutor = new ProjectExecutor(
+      this.projectSystem = new ProjectSystem(
         bot,
         this.memory,
         perception,
-        actions,
         movementSystem,
         inventorySystem,
         miningSystem,
@@ -391,7 +390,7 @@ export class MinecraftRuntime {
       );
       this.agent.start();
       this.acquisitionSystem.start();
-      this.projectExecutor.start();
+      this.projectSystem.start();
     });
 
     bot.on("chat", (username, message) => {
@@ -565,7 +564,7 @@ export class MinecraftRuntime {
       this.agent?.stop();
       this.combatSystem?.stop();
       this.acquisitionSystem?.stop();
-      this.projectExecutor?.stop();
+      this.projectSystem?.stop();
       this.recoverySystem?.stop();
       this.storageSystem?.stop();
       this.survivalSystem?.stop();
@@ -573,7 +572,7 @@ export class MinecraftRuntime {
       this.agent = undefined;
       this.combatSystem = undefined;
       this.acquisitionSystem = undefined;
-      this.projectExecutor = undefined;
+      this.projectSystem = undefined;
       this.recoverySystem = undefined;
       this.storageSystem = undefined;
       this.survivalSystem = undefined;

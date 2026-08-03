@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Promoted durable multi-step projects from an action-coupled executor to ProjectSystem; surveys, production, mining, traversal, building, food acquisition, storage, verification, and recovery now compose subsystem APIs, and all project world reads route through sensing.
 - Routed project food hunting through CombatSystem's visible-mob engagement API, eliminating the parallel project attack loop while preserving the unconditional player-target rejection boundary.
 - Promoted persistent gather work from an action-driven executor to AcquisitionSystem; source selection, finite or continuing search, mining, storage pressure, survival pauses, progress accounting, and escalation now compose enclosed subsystem APIs without planner tools.
 - Promoted death-site recovery from an action-coupled executor to RecoverySystem; it now orchestrates only movement, sensing, inventory, looting, mining, and storage APIs, with no planner-action dependency or parallel block lookup.
