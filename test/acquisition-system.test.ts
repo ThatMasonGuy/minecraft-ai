@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesGatherSource, spiralOffset } from "../src/work-executor.js";
+import { matchesGatherSource, spiralOffset } from "../src/acquisition-system.js";
 
 describe("spiralOffset", () => {
   it("produces adjacent expanding search waypoints", () => {

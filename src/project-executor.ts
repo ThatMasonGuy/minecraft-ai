@@ -35,7 +35,7 @@ import type {
   RelativePosition,
   StructureCheck
 } from "./types.js";
-import { spiralOffset } from "./work-executor.js";
+import { spiralOffset } from "./acquisition-system.js";
 
 interface SurveyState {
   origin?: Position;

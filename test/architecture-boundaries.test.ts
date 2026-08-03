@@ -12,12 +12,11 @@ function sourceFiles(): string[] {
 }
 
 describe("enclosed subsystem boundaries", () => {
-  it("keeps recovery orchestration independent of the planner action adapter", () => {
-    const recovery = fs.readFileSync(
-      path.join(SOURCE_ROOT, "recovery-system.ts"),
-      "utf8"
-    );
-    expect(recovery).not.toMatch(/MinecraftActions|actions\.execute/);
+  it("keeps deterministic workflows independent of the planner action adapter", () => {
+    for (const name of ["acquisition-system.ts", "recovery-system.ts"]) {
+      const workflow = fs.readFileSync(path.join(SOURCE_ROOT, name), "utf8");
+      expect(workflow).not.toMatch(/MinecraftActions|actions\.execute/);
+    }
   });
 
   it("keeps locomotion, orientation, and control-state mutations in movement", () => {

@@ -35,7 +35,7 @@ import { MineflayerStorageSystem, type StorageSystem } from "./storage-system.js
 import { MineflayerSurvivalSystem, type SurvivalSystem } from "./survival-system.js";
 import { startViewerServer, type ViewerServer } from "./viewer-server.js";
 import { ViewerStatusStore } from "./viewer-status.js";
-import { WorkExecutor } from "./work-executor.js";
+import { AcquisitionSystem } from "./acquisition-system.js";
 
 const require = createRequire(import.meta.url);
 const { pathfinder } = require(
@@ -49,7 +49,7 @@ export class MinecraftRuntime {
   private agent?: AutonomousAgent;
   private combatSystem?: CombatSystem;
   private lootingSystem?: LootingSystem;
-  private workExecutor?: WorkExecutor;
+  private acquisitionSystem?: AcquisitionSystem;
   private projectExecutor?: ProjectExecutor;
   private recoverySystem?: RecoverySystem;
   private storageSystem?: StorageSystem;
@@ -75,7 +75,7 @@ export class MinecraftRuntime {
     this.agent?.stop();
     this.combatSystem?.stop();
     this.lootingSystem?.stop();
-    this.workExecutor?.stop();
+    this.acquisitionSystem?.stop();
     this.projectExecutor?.stop();
     this.recoverySystem?.stop();
     this.storageSystem?.stop();
@@ -307,11 +307,13 @@ export class MinecraftRuntime {
           console.error(`[operator] Failed to start: ${message}`);
         }
       }
-      this.workExecutor = new WorkExecutor(
+      this.acquisitionSystem = new AcquisitionSystem(
         this.memory,
         perception,
-        actions,
+        movementSystem,
+        miningSystem,
         storageSystem,
+        survivalSystem,
         config.workExecutorTickMs,
         (reason) =>
           this.agent?.wakeAutomatically(reason, {
@@ -386,7 +388,7 @@ export class MinecraftRuntime {
           `; tools ${config.plannerToolMode}`
       );
       this.agent.start();
-      this.workExecutor.start();
+      this.acquisitionSystem.start();
       this.projectExecutor.start();
     });
 
@@ -560,7 +562,7 @@ export class MinecraftRuntime {
     bot.once("end", (reason) => {
       this.agent?.stop();
       this.combatSystem?.stop();
-      this.workExecutor?.stop();
+      this.acquisitionSystem?.stop();
       this.projectExecutor?.stop();
       this.recoverySystem?.stop();
       this.storageSystem?.stop();
@@ -568,7 +570,7 @@ export class MinecraftRuntime {
       this.executionCoordinator?.dispose();
       this.agent = undefined;
       this.combatSystem = undefined;
-      this.workExecutor = undefined;
+      this.acquisitionSystem = undefined;
       this.projectExecutor = undefined;
       this.recoverySystem = undefined;
       this.storageSystem = undefined;

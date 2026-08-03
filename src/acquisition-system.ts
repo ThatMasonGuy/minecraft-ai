@@ -1,8 +1,10 @@
-import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { Perception } from "./perception.js";
+import type { MovementSystem } from "./movement-system.js";
+import type { MiningSystem } from "./mining-system.js";
+import type { SurvivalSystem } from "./survival-system.js";
 import type {
   ActivityUpdate,
   PerceptionSnapshot,
@@ -24,7 +26,7 @@ interface SearchState {
 const FINITE_SEARCH_WAYPOINTS = 12;
 const SEARCH_GRID_SIZE = 8;
 
-export class WorkExecutor {
+export class AcquisitionSystem {
   private timer?: NodeJS.Timeout;
   private running = false;
   private lastState?: string;
@@ -37,8 +39,10 @@ export class WorkExecutor {
   constructor(
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
-    private readonly actions: MinecraftActions,
+    private readonly movement: MovementSystem,
+    private readonly mining: MiningSystem,
     private readonly storage: StorageSystem,
+    private readonly survival: SurvivalSystem,
     private readonly tickMs: number,
     private readonly requestReplan: (reason: string) => void,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
@@ -55,6 +59,10 @@ export class WorkExecutor {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     this.execution?.release();
+  }
+
+  isActive(): boolean {
+    return this.memory.activeWorkOrder() !== undefined;
   }
 
   private runTick(): void {
@@ -85,16 +93,17 @@ export class WorkExecutor {
     this.running = true;
     try {
       const snapshot = this.perception.observe();
-      if (snapshot.health <= 4 || snapshot.food <= 6) {
+      const vitals = this.survival.snapshot();
+      if (vitals.health <= 4 || vitals.food <= 6) {
         this.reportActivity(
           "waiting",
           "Work paused for survival",
-          `Health ${snapshot.health}, food ${snapshot.food}`
+          `Health ${vitals.health}, food ${vitals.food}`
         );
         this.logState(
           `unsafe:${order.id}`,
           `[work] Work order ${order.id} waiting for safe vitals ` +
-            `(health ${snapshot.health}, food ${snapshot.food})`
+            `(health ${vitals.health}, food ${vitals.food})`
         );
         return;
       }
@@ -175,13 +184,16 @@ export class WorkExecutor {
         return;
       }
 
-      const result = await this.actions.execute("mine_visible_block", {
-        x: source.x,
-        y: source.y,
-        z: source.z
+      const result = await this.mining.mineBlock({
+        position: { x: source.x, y: source.y, z: source.z },
+        requireVisible: true
       });
-      if (!result.ok) {
-        this.retrySource(order.id, source, result.message);
+      if (result.status !== "mined") {
+        this.retrySource(
+          order.id,
+          source,
+          result.status === "blocked" ? result.detail : "source was already clear"
+        );
       } else {
         this.consecutiveFailures.delete(order.id);
         this.trunkColumns.set(order.id, {
@@ -190,7 +202,7 @@ export class WorkExecutor {
           aroundY: source.y
         });
         console.log(
-          `[work] ${result.message} at ${source.x}, ${source.y}, ${source.z}`
+          `[work] Mined ${result.blockName} at ${source.x}, ${source.y}, ${source.z}`
         );
       }
     } finally {
@@ -301,14 +313,9 @@ export class WorkExecutor {
       `Searching for ${order.spec.itemName}`,
       `Waypoint ${state.nextWaypoint}/${searchExtent}`
     );
-    const result = await this.actions.execute("move_to_surface", {
-      x: target.x,
-      y: target.y,
-      z: target.z,
-      range: 4
-    });
-    if (!result.ok) {
-      console.warn(`[work] Search movement failed: ${result.message}`);
+    const result = await this.movement.reachSurfaceArea(target, 4);
+    if (result.status === "blocked") {
+      console.warn(`[work] Search movement failed: ${result.detail}`);
     }
   }
 
@@ -324,15 +331,6 @@ export class WorkExecutor {
       `Storing ${order.spec.itemName}`,
       `Returning to ${position.x}, ${position.y}, ${position.z}`
     );
-    const movement = await this.actions.execute("move_to", {
-      ...position,
-      range: 3
-    });
-    if (!movement.ok) {
-      this.retryStorage(order.id, movement.message);
-      return;
-    }
-
     const deposit = await this.storage.deposit(position, order.spec.itemName);
     if (deposit.status === "blocked") {
       this.retryStorage(order.id, deposit.detail);
