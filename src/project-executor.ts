@@ -25,7 +25,7 @@ import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
-import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
+import { rewindProjectForInventoryLoss } from "./recovery-system.js";
 import type {
   ActivityUpdate,
   BlueprintPlacement,

@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Promoted death-site recovery from an action-coupled executor to RecoverySystem; it now orchestrates only movement, sensing, inventory, looting, mining, and storage APIs, with no planner-action dependency or parallel block lookup.
 - Extracted vital-state policy, automatic eating, armour upkeep, food consumption, sleeping, waking, danger escalation, and combat-readiness decisions into SurvivalSystem; combat and project workflows now consume survival outcomes instead of raw health or hunger state.
 - Replaced the storage executor/action inversion with StorageSystem, which now owns proactive inventory-pressure storage, container selection, deposits, owned-container withdrawals, transfer verification, and persistent container accounting.
 - Extracted recipe resolution, bounded crafting, crafting-table interaction, furnace loading, fuel policy, output collection, and production outcomes into ProductionSystem; actions and project workflows no longer call Mineflayer crafting or furnace primitives.

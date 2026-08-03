@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   rewindProjectForInventoryLoss,
   shouldRecoverInventory
-} from "../src/recovery-executor.js";
+} from "../src/recovery-system.js";
 import type { ProjectPlan } from "../src/types.js";
 
 describe("recovery continuity", () => {

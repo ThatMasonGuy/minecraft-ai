@@ -2,7 +2,6 @@ import type { Bot } from "mineflayer";
 import { Vec3 } from "vec3";
 import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
-import type { MinecraftActions } from "./actions.js";
 import type {
   ActivityUpdate,
   Position,
@@ -37,7 +36,7 @@ const LOW_VALUE_RECOVERY_ITEMS = new Set([
   "tuff"
 ]);
 
-export class RecoveryExecutor {
+export class RecoverySystem {
   private timer?: NodeJS.Timeout;
   private running = false;
   private lastGoalAt = 0;
@@ -50,7 +49,6 @@ export class RecoveryExecutor {
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
-    private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
@@ -176,7 +174,7 @@ export class RecoveryExecutor {
           `${Math.ceil(distance)} blocks from death site`
         );
         const waypoint = this.recoveryWaypoint(job.position);
-        const waypointBlock = this.bot.blockAt(
+        const waypointBlock = this.sensing.blockAt(
           new Vec3(waypoint.x, waypoint.y, waypoint.z)
         );
         if (

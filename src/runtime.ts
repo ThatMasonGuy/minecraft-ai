@@ -28,9 +28,9 @@ import {
 } from "./operator-server.js";
 import { ProjectExecutor } from "./project-executor.js";
 import {
-  RecoveryExecutor,
+  RecoverySystem,
   shouldRecoverInventory
-} from "./recovery-executor.js";
+} from "./recovery-system.js";
 import { MineflayerStorageSystem, type StorageSystem } from "./storage-system.js";
 import { MineflayerSurvivalSystem, type SurvivalSystem } from "./survival-system.js";
 import { startViewerServer, type ViewerServer } from "./viewer-server.js";
@@ -51,7 +51,7 @@ export class MinecraftRuntime {
   private lootingSystem?: LootingSystem;
   private workExecutor?: WorkExecutor;
   private projectExecutor?: ProjectExecutor;
-  private recoveryExecutor?: RecoveryExecutor;
+  private recoverySystem?: RecoverySystem;
   private storageSystem?: StorageSystem;
   private survivalSystem?: SurvivalSystem;
   private executionCoordinator?: ExecutionCoordinator;
@@ -77,7 +77,7 @@ export class MinecraftRuntime {
     this.lootingSystem?.stop();
     this.workExecutor?.stop();
     this.projectExecutor?.stop();
-    this.recoveryExecutor?.stop();
+    this.recoverySystem?.stop();
     this.storageSystem?.stop();
     this.survivalSystem?.stop();
     this.executionCoordinator?.dispose();
@@ -224,7 +224,7 @@ export class MinecraftRuntime {
         (activity) => this.viewerStatus.setWork(activity),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
-          (this.recoveryExecutor?.isActive() ?? false),
+          (this.recoverySystem?.isActive() ?? false),
         executionCoordinator.scope(
           "storage",
           () => this.storageSystem?.isActive() ?? false
@@ -244,10 +244,9 @@ export class MinecraftRuntime {
         survivalSystem,
         config.maxMoveDistance
       );
-      this.recoveryExecutor = new RecoveryExecutor(
+      this.recoverySystem = new RecoverySystem(
         bot,
         this.memory,
-        actions,
         movementSystem,
         perception,
         inventorySystem,
@@ -258,10 +257,10 @@ export class MinecraftRuntime {
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
           "recovery",
-          () => this.recoveryExecutor?.isActive() ?? false
+          () => this.recoverySystem?.isActive() ?? false
         )
       );
-      this.recoveryExecutor.start();
+      this.recoverySystem.start();
       storageSystem.start();
       this.agent = new AutonomousAgent(this.memory, perception, actions, {
         apiKey: config.openaiApiKey,
@@ -322,7 +321,7 @@ export class MinecraftRuntime {
           }),
         (activity) => {
           if (
-            !this.recoveryExecutor?.isActive() &&
+            !this.recoverySystem?.isActive() &&
             !this.storageSystem?.isActive() &&
             (activity.phase !== "idle" || !this.memory.activeProject())
           ) {
@@ -331,7 +330,7 @@ export class MinecraftRuntime {
         },
         () =>
           (this.combatSystem?.isActive() ?? false) ||
-          (this.recoveryExecutor?.isActive() ?? false) ||
+          (this.recoverySystem?.isActive() ?? false) ||
           (this.storageSystem?.isActive() ?? false),
         executionCoordinator.scope(
           "work",
@@ -353,7 +352,7 @@ export class MinecraftRuntime {
         config.workExecutorTickMs,
         (activity) => {
           if (
-            !this.recoveryExecutor?.isActive() &&
+            !this.recoverySystem?.isActive() &&
             !this.storageSystem?.isActive()
           ) {
             this.viewerStatus.setWork(activity);
@@ -361,7 +360,7 @@ export class MinecraftRuntime {
         },
         () =>
           (this.combatSystem?.isActive() ?? false) ||
-          (this.recoveryExecutor?.isActive() ?? false) ||
+          (this.recoverySystem?.isActive() ?? false) ||
           (this.storageSystem?.isActive() ?? false),
         executionCoordinator.scope(
           "project",
@@ -563,15 +562,17 @@ export class MinecraftRuntime {
       this.combatSystem?.stop();
       this.workExecutor?.stop();
       this.projectExecutor?.stop();
-      this.recoveryExecutor?.stop();
+      this.recoverySystem?.stop();
       this.storageSystem?.stop();
+      this.survivalSystem?.stop();
       this.executionCoordinator?.dispose();
       this.agent = undefined;
       this.combatSystem = undefined;
       this.workExecutor = undefined;
       this.projectExecutor = undefined;
-      this.recoveryExecutor = undefined;
+      this.recoverySystem = undefined;
       this.storageSystem = undefined;
+      this.survivalSystem = undefined;
       this.executionCoordinator = undefined;
       const operator = this.operator;
       this.operator = undefined;
