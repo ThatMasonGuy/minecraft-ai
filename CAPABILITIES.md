@@ -22,7 +22,7 @@ Status meanings:
 | Permanent usage and cost ledger | Partial | Record mixed-model calls exactly once and reproduce daily/lifetime/model/phase totals using historical price versions. | Focused accounting, operator-report, snapshot/restore, and live Luna evidence; provider-billing reconciliation remains |
 | Cost attribution and offender drill-down | Verified | Record one initial request and follow-up under the same turn, then filter and aggregate by role, workload, trigger, task, and tag while ranking turn cost. | `test/api-usage.test.ts`, `test/memory.test.ts`, and operator filter validation |
 | High-level-only planner boundary | Verified | Inspect PlannerTools and confirm it is Bot-free, imports no motor systems, and exposes no coordinates, motor actions, or project-plan authoring while broad gathering delegation remains. | `test/planner-tools.test.ts`; `test/architecture-boundaries.test.ts`; checkpoint `c7e8f7a` |
-| High-level deterministic project compilation | Unverified | Request a supported coordinate-free project outcome and confirm deterministic code chooses perceived or remembered materials/site, persists a validated linked plan, and begins execution without another model call. | Focused compiler, planner-tool, and task-lifecycle coverage; live execution pending |
+| High-level deterministic project compilation | Unverified | Request a supported coordinate-free project outcome and confirm deterministic code chooses perceived or remembered materials/site, persists a validated linked plan, and begins execution without another model call. | Live planning/compilation passed on 2026-08-03; deterministic completion was paused at the failed legacy survey and awaits revalidation with nearby site preparation |
 | Enclosed subsystem ownership | Verified | Run the architecture boundary suite and confirm every raw movement, sensing, inventory, combat, mining, building, production, storage, survival, communication, task, telemetry, and persistence primitive has one approved owner. | `test/architecture-boundaries.test.ts`; `ARCHITECTURE.md` |
 | Zero-cost operator task submission | Verified | Submit a validated work order through the running process, confirm no API usage delta, and identify the resulting task as operator-issued. | `test/operator-control.test.ts`; focused validation after operator API implementation |
 | Test-world snapshot and restore | Verified | Snapshot stopped test state, mutate world and agent data, restore checksummed state, preserve current auth, and retain post-snapshot API ledger history. | `test/world-state.test.ts`; focused snapshot/accounting validation |
@@ -43,6 +43,16 @@ Status meanings:
 - Operator-issued tasks and test setup are evidence inputs, not autonomous accomplishments.
 
 ## Evidence log
+
+### 2026-08-03 — High-level project execution paused at site selection
+
+- Preconditions: planner `manual`, tools temporarily `execute`, web search disabled, no active work order or project, and one explicit operator-triggered call permitted.
+- Trigger: request exactly one `delegate_project` call for a starter shelter with no coordinates, blueprint, or separate goal-only action.
+- Planning result: one `gpt-5.6-luna` request created linked goal 13 and planner-origin project 10, compiling a complete eight-step birch shelter plan with deterministic structure verification.
+- Cost: one initial request, 4,960 total tokens, zero reasoning tokens, zero web searches, no follow-up request, and estimated cost `$0.001266`.
+- Execution result: the legacy site survey advanced through 37 six-block spiral waypoints, logged a no-progress surface-route failure, and did not select a site before the user paused the evaluation.
+- Stop state: agent container stopped, project 10 remains active at step 0, Minecraft server remains available, and local planner configuration was returned to development defaults.
+- Classification: planner selection, compiler persistence, and no-continuation arbitration passed; end-to-end project completion did not pass and must be rerun against the nearby scored-site preparation implementation.
 
 ### 2026-08-03 — GPT-5.6 Luna single-request dry run
 
