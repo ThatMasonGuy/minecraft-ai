@@ -130,6 +130,7 @@ export class MinecraftRuntime {
         combat: (activity) => this.viewerStatus.setCombat(activity),
         storage: (activity) => this.viewerStatus.setWork(activity),
         recovery: (activity) => this.viewerStatus.setWork(activity),
+        survival: (activity) => this.viewerStatus.setWork(activity),
         acquisition: (activity) => {
           if (
             !this.recoverySystem?.isActive() &&
