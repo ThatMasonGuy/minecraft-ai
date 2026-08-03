@@ -1,5 +1,40 @@
 # Project TODO
 
+## Enclosure-aware combat escape corridors
+
+Priority: high
+
+Replace endpoint-only evasion scoring with a route-aware breakout planner for multi-threat encirclement. The current movement system samples destinations up to 12 blocks away and accepts only endpoints whose minimum threat distance improves on the bot's current position. It does not score the danger crossed along the route or deliberately pass through the least-dangerous gap when every escape initially moves closer to a threat.
+
+Observed deterministic geometry failures:
+
+- A sufficiently wide or dense ring can reject every sampled destination, causing the bot to hold in the middle until the ring collapses inward.
+- A tight ring can produce a distant valid endpoint whose straight corridor passes effectively through a mob; a 12-mob radius-3 simulation selected a route with only 0.29 blocks of minimum corridor clearance.
+- The planner cannot currently distinguish a controlled temporary reduction in separation from a genuinely unsafe destination.
+
+### Required behavior
+
+- Detect enclosure and angular gaps using only currently perceived threats; do not introduce hidden-entity or unloaded-world knowledge.
+- Score the complete candidate corridor or Pathfinder route, including minimum threat clearance, terrain/path cost, ranged line of sight, and whether the route crosses melee reach.
+- When no monotonically improving route exists, allow a bounded temporary reduction in separation to break through the least-dangerous visible gap.
+- Commit through the selected breakout corridor with hysteresis, while still replanning immediately when a new visible threat invalidates it or the route stalls.
+- Preserve subsystem ownership: CombatSystem supplies threat context and requests escape; MovementSystem alone selects and executes the route.
+- Provide an explicit blocked/enclosed outcome when no survivable corridor exists so CombatSystem can choose a defensive shove or another bounded survival response instead of silently holding.
+
+### Verification
+
+- Add deterministic ring tests across multiple mob counts and radii, including cases where safety requires temporarily moving closer to one threat.
+- Assert that the chosen route maximizes corridor safety rather than endpoint distance alone and never freezes when a viable breakout gap exists.
+- Add a bounded live test with a controlled visible ring of tagged mobs; success requires autonomous breakout, no manual steering, and trace evidence of the selected corridor and minimum clearance.
+- Keep the planner in manual/dry-run mode and make no paid model calls during movement verification.
+
+### Completion criteria
+
+- The bot escapes both tight and wide incomplete rings through the safest visible gap.
+- A complete ring produces an intentional least-risk breakout or explicit enclosed response, not indefinite holding.
+- Newly perceived threats can invalidate the breakout before the old path completes.
+- Route telemetry explains why a corridor was selected and whether temporary proximity loss was required.
+
 ## Durable API usage and cost accounting
 
 Priority: high
