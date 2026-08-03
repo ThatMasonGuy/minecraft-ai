@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allowsOperatorCooldownBypass,
   plannerRequestCooldownRemainingMs,
   requiredPlannerToolForTaskType,
   shouldDeferToDeterministicWork
@@ -78,5 +79,22 @@ describe("model decision arbitration", () => {
       "delegate_house_project"
     );
     expect(requiredPlannerToolForTaskType("scheduled_reflection")).toBeUndefined();
+  });
+
+  it("allows only an explicitly tagged operator request to bypass cooldown", () => {
+    expect(
+      allowsOperatorCooldownBypass({
+        workloadType: "task_planning",
+        triggerSource: "operator",
+        tags: { skip_cooldown: "true" }
+      })
+    ).toBe(true);
+    expect(
+      allowsOperatorCooldownBypass({
+        workloadType: "reflection",
+        triggerSource: "schedule",
+        tags: { skip_cooldown: "true" }
+      })
+    ).toBe(false);
   });
 });

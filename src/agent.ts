@@ -214,7 +214,16 @@ export class AutonomousAgent {
       return;
     }
     if (!this.hasTokenBudget("initial decision")) return;
-    if (!(await this.waitForRequestCooldown())) return;
+    if (allowsOperatorCooldownBypass(turn.attribution)) {
+      this.memory.record({
+        kind: "planner_cooldown_bypass",
+        summary: "Used an explicit operator-only planner cooldown bypass",
+        payload: { taskId: turn.attribution.taskId, tags: turn.attribution.tags },
+        importance: 8
+      });
+    } else if (!(await this.waitForRequestCooldown())) {
+      return;
+    }
     if (
       shouldDeferToDeterministicWork(reason, {
         project: Boolean(this.memory.activeProject()),
@@ -702,6 +711,15 @@ export function requiredPlannerToolForTaskType(
     default:
       return undefined;
   }
+}
+
+export function allowsOperatorCooldownBypass(
+  attribution: PlanningAttribution
+): boolean {
+  return (
+    attribution.triggerSource === "operator" &&
+    attribution.tags?.skip_cooldown === "true"
+  );
 }
 
 export function continuityGatherPlan(

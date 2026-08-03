@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Added an explicit, ledger-tagged operator-only cooldown bypass for deliberate live evaluations while preserving the normal minimum interval for automatic and untagged planner requests.
 - Forced explicitly tagged shelter and house planning requests onto the high-level house-design tool so an initial paid call cannot be consumed by chat before creating deterministic work.
 - Replaced coded compact, standard, and spacious house choices with planner-authored connected footprint geometry; autonomous house identity and layout now come from planning while deterministic systems own safe realization.
 - Replaced roaming project-site surveys with nearby scored candidate selection and bounded MiningSystem-owned site clearing; projects now prepare safe loaded terrain instead of repeatedly pathing through spiral waypoints in search of a pre-cleared rectangle.
