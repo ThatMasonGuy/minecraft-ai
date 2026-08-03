@@ -3,6 +3,10 @@ import type {
   ProjectPlanDraft,
   RelativePosition
 } from "./types.js";
+import {
+  analyzeHouseDesign,
+  type HouseDesign
+} from "./house-design.js";
 
 export const SUPPORTED_WOOD_FAMILIES = [
   "oak",
@@ -33,39 +37,56 @@ export function generatedStarterHouseProject(
   scale: ProjectScale = "compact"
 ): ProjectPlanDraft {
   const { width, depth } = projectScaleDimensions(scale);
-  const roofY = 3;
+  const rows = Array.from({ length: depth }, () => "#".repeat(width));
+  const doorX = Math.floor(width / 2);
+  rows[0] = `${"#".repeat(doorX)}D${"#".repeat(width - doorX - 1)}`;
+  return generatedHouseProject(goalId, woodFamily, {
+    designName: `${scale} starter house`,
+    footprintRows: rows,
+    wallHeight: 3
+  });
+}
+
+export function generatedHouseProject(
+  goalId: number | undefined,
+  woodFamily: SupportedWoodFamily,
+  design: HouseDesign
+): ProjectPlanDraft {
+  const analysis = analyzeHouseDesign(design);
+  const { width, depth } = analysis;
+  const roofY = design.wallHeight;
   const logName = `${woodFamily}_log`;
   const planksName = `${woodFamily}_planks`;
   const doorName = `${woodFamily}_door`;
   const woodLabel = woodFamily.replaceAll("_", " ");
   const wallPlacements: BlueprintPlacement[] = [];
-  const doorway = { dx: Math.floor(width / 2), dz: 0 };
-  for (let dy = 0; dy < roofY; dy += 1) {
-    for (let dx = 0; dx < width; dx += 1) {
-      for (let dz = 0; dz < depth; dz += 1) {
-        const boundary =
-          dx === 0 || dx === width - 1 || dz === 0 || dz === depth - 1;
+  const doorway = analysis.door;
+  for (let dy = 0; dy < design.wallHeight; dy += 1) {
+    for (const cell of analysis.boundaryCells) {
+        const { dx, dz } = cell;
         const doorwayGap =
           dx === doorway.dx && dz === doorway.dz && (dy === 0 || dy === 1);
-        if (!boundary || doorwayGap) continue;
+        if (doorwayGap) continue;
         wallPlacements.push(block(dx, dy, dz, planksName));
-      }
     }
   }
   const roofPlacements: BlueprintPlacement[] = [];
-  for (let dz = 0; dz < depth; dz += 1) {
-    for (let dx = 0; dx < width; dx += 1) {
-      roofPlacements.push(block(dx, roofY, dz, planksName));
-    }
+  for (const { dx, dz } of analysis.cells) {
+    roofPlacements.push(block(dx, roofY, dz, planksName));
   }
   const plankTarget = wallPlacements.length + roofPlacements.length + 10;
   const logTarget = Math.ceil(plankTarget / 4);
+  const workbench = [...analysis.interiorCells].sort(
+    (left, right) =>
+      Math.hypot(left.dx - width / 2, left.dz - depth / 2) -
+      Math.hypot(right.dx - width / 2, right.dz - depth / 2)
+  )[0]!;
 
   return {
     goalId,
-    title: `Build a ${scale} ${woodLabel} starter house`,
+    title: `Build ${design.designName} in ${woodLabel}`,
     completionSummary:
-      `A verified ${width}x${depth} ${woodLabel} shelter has enclosed walls, a complete roof, and a working doorway.`,
+      `The planner-designed ${design.designName} has a verified connected ${width}x${depth} bounding footprint, enclosed walls, a complete roof, and a working doorway.`,
     steps: [
       {
         id: "survey_site",
@@ -74,11 +95,12 @@ export function generatedStarterHouseProject(
           kind: "survey_site",
           width,
           depth,
-          clearanceHeight: 4,
+          clearanceHeight: design.wallHeight + 1,
           maxWaypoints: 96,
           waypointSpacing: 6,
           searchRadius: 8,
-          maxSitePreparationBlocks: width * depth * 4
+          maxSitePreparationBlocks:
+            width * depth * (design.wallHeight + 1)
         }
       },
       {
@@ -114,7 +136,7 @@ export function generatedStarterHouseProject(
         title: "Installing the interior workbench",
         spec: {
           kind: "place_blueprint",
-          placements: [block(2, 0, 2, "crafting_table")]
+          placements: [block(workbench.dx, 0, workbench.dz, "crafting_table")]
         }
       },
       {
@@ -124,7 +146,7 @@ export function generatedStarterHouseProject(
           kind: "craft_item",
           itemName: doorName,
           targetCount: 1,
-          craftingTableAt: { dx: 2, dy: 0, dz: 2 }
+          craftingTableAt: { dx: workbench.dx, dy: 0, dz: workbench.dz }
         }
       },
       {
@@ -152,23 +174,6 @@ export function generatedStarterHouseProject(
           kind: "verify_structure",
           checks: [
             { kind: "blueprint_complete" },
-            {
-              kind: "roofed_area",
-              min: { dx: 1, dy: 0, dz: 1 },
-              max: { dx: width - 2, dy: 0, dz: depth - 2 },
-              roofY
-            },
-            {
-              kind: "boundary_closed",
-              min: { dx: 0, dy: 0, dz: 0 },
-              max: { dx: width - 1, dy: 0, dz: depth - 1 },
-              minY: 0,
-              maxY: roofY - 1,
-              openings: [
-                { dx: doorway.dx, dy: 0, dz: doorway.dz },
-                { dx: doorway.dx, dy: 1, dz: doorway.dz }
-              ]
-            },
             {
               kind: "entrance",
               at: { dx: doorway.dx, dy: 0, dz: doorway.dz },
