@@ -14,6 +14,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added a shared movement-system interface with reusable follow, approach, hold, and multi-threat escape routing outcomes for deterministic subsystems.
 - Added a manual planner mode with explicit `!plan <task>` turns so development does not generate scheduled or incidental API traffic.
 - Added repository operating rules for autonomous testing, targeted validation, frequent Git checkpoints, attribution, and changelog maintenance.
 - Added a permanent API usage and cost-accounting specification covering lifetime, daily, per-model, and per-workload reporting.
