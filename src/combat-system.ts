@@ -363,9 +363,10 @@ export class CombatSystem {
     const result = this.movement.escape({ dangers, safeDistance });
     const elapsed = Date.now() - this.escapeStartedAt;
     const quietFor = Date.now() - this.lastContactAt;
+    const safeByCover = this.hasCoverFromRangedThreat();
 
     if (
-      result.status === "safe" &&
+      (result.status === "safe" || safeByCover) &&
       elapsed >= MINIMUM_ESCAPE_MS &&
       quietFor >= ESCAPE_QUIET_MS
     ) {
@@ -733,6 +734,12 @@ export class CombatSystem {
     )
       ? RANGED_ESCAPE_DISTANCE
       : MOB_ESCAPE_DISTANCE;
+  }
+
+  private hasCoverFromRangedThreat(): boolean {
+    if (!this.target?.isValid) return false;
+    if (!LONG_RANGE_HOSTILES.has(normalizedEntityName(this.target))) return false;
+    return !this.hasLineOfSight(this.target) && this.visibleHostiles().length === 0;
   }
 
   private async tryDefensiveShove(): Promise<void> {

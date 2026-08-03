@@ -248,20 +248,24 @@ describe("combat escape recovery", () => {
         activateItem: vi.fn(),
         deactivateItem: vi.fn()
       });
+      let targetVisible = true;
+      let escapeResult:
+        | { status: "safe" }
+        | { status: "blocked"; detail: string } = { status: "safe" };
       const movement = {
         follow: vi.fn(),
         approach: vi.fn(),
         face: vi.fn(async () => undefined),
         hold: vi.fn(),
-        escape: vi.fn(() => ({ status: "safe" as const }))
+        escape: vi.fn(() => escapeResult)
       };
       const combat = new CombatSystem(
         bot as never,
         { record: vi.fn(), activity: vi.fn() } as never,
         movement,
         {
-          visibleEntitiesRaw: () => [skeleton],
-          hasLineOfSight: () => true
+          visibleEntitiesRaw: () => (targetVisible ? [skeleton] : []),
+          hasLineOfSight: () => targetVisible
         } as never,
         {
           items: () => [],
@@ -304,6 +308,13 @@ describe("combat escape recovery", () => {
       emitter.emit("entityHurt", botEntity, skeleton);
       expect(combat.currentMode()).toBe("escaping");
       expect(bot.attack).not.toHaveBeenCalled();
+
+      targetVisible = false;
+      escapeResult = { status: "blocked", detail: "No farther route" };
+      vi.advanceTimersByTime(4_001);
+      emitter.emit("physicsTick");
+      await Promise.resolve();
+      expect(combat.currentMode()).toBe("recovering");
       combat.stop();
     } finally {
       vi.useRealTimers();
