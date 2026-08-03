@@ -149,6 +149,7 @@ describe("player aggression escape", () => {
     const movement = {
       follow: vi.fn(),
       approach: vi.fn(),
+      face: vi.fn(async () => undefined),
       hold: vi.fn(),
       escape: vi.fn(() => ({
         status: "moving" as const,
@@ -221,6 +222,7 @@ describe("enclosed combat movement", () => {
     const movement = {
       follow: vi.fn(),
       approach: vi.fn(),
+      face: vi.fn(async () => undefined),
       hold: vi.fn(),
       escape: vi.fn(() => ({
         status: "moving" as const,

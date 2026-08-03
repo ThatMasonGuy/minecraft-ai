@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
@@ -12,12 +11,7 @@ import type {
   ProjectStep
 } from "./types.js";
 import { isDroppedItemEntity } from "./entity-classification.js";
-
-const require = createRequire(import.meta.url);
-const { goals } = require(
-  "mineflayer-pathfinder"
-) as typeof import("mineflayer-pathfinder");
-const { GoalNear, GoalXZ } = goals;
+import type { MovementSystem } from "./movement-system.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -55,6 +49,7 @@ export class RecoveryExecutor {
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
     private readonly actions: MinecraftActions,
+    private readonly movement: MovementSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -134,7 +129,7 @@ export class RecoveryExecutor {
       !onKnownUndergroundRoute &&
       distanceBetween(this.bot.entity.position, recoveryRoute) > 16
     ) {
-      this.bot.pathfinder.stop();
+      this.movement.hold();
       this.lastProgressAt = Date.now();
       this.report(
         "waiting",
@@ -188,9 +183,8 @@ export class RecoveryExecutor {
             "Clearing the recovery route",
             `Collecting obstructing ${waypointBlock.name.replaceAll("_", " ")}`
           );
-          await this.bot.lookAt(
-            waypointBlock.position.offset(0.5, 0.5, 0.5),
-            true
+          await this.movement.face(
+            waypointBlock.position.offset(0.5, 0.5, 0.5)
           );
           if (this.bot.canDigBlock(waypointBlock)) {
             await this.bot.dig(waypointBlock);
@@ -213,11 +207,11 @@ export class RecoveryExecutor {
         ) {
           this.lastGoalAt = Date.now();
           this.lastWaypointKey = waypointKey;
-          this.bot.pathfinder.setGoal(
-            waypoint.surfaceOnly
-              ? new GoalXZ(waypoint.x, waypoint.z)
-              : new GoalNear(waypoint.x, waypoint.y, waypoint.z, 0)
-          );
+          if (waypoint.surfaceOnly) {
+            this.movement.approachXZ(waypoint);
+          } else {
+            this.movement.approach(waypoint, 0);
+          }
         }
         return;
       }
@@ -234,9 +228,7 @@ export class RecoveryExecutor {
         if (Date.now() - this.lastGoalAt >= 400) {
           this.lastGoalAt = Date.now();
           this.lastWaypointKey = `item:${item.id}`;
-          this.bot.pathfinder.setGoal(
-            new GoalNear(item.position.x, item.position.y, item.position.z, 0)
-          );
+          this.movement.approach(item.position, 0);
         }
         return;
       }
@@ -328,25 +320,8 @@ export class RecoveryExecutor {
   }
 
   private async stepToAdjacentWaypoint(waypoint: Position): Promise<void> {
-    const target = new Vec3(waypoint.x, waypoint.y, waypoint.z);
     const current = this.bot.entity.position.floored();
-    this.bot.pathfinder.stop();
-    this.bot.clearControlStates();
-    await this.bot.lookAt(target.offset(0.5, 1, 0.5), true);
-    this.bot.setControlState("forward", true);
-    this.bot.setControlState("jump", target.y > current.y);
-    try {
-      const deadline = Date.now() + 3_000;
-      while (
-        Date.now() < deadline &&
-        !this.bot.entity.position.floored().equals(target)
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    } finally {
-      this.bot.setControlState("forward", false);
-      this.bot.setControlState("jump", false);
-    }
+    await this.movement.stepToAdjacent(waypoint, waypoint.y > current.y);
     this.lastWaypointKey = undefined;
   }
 
@@ -474,7 +449,7 @@ export class RecoveryExecutor {
     status: "completed" | "expired" | "cancelled",
     reason: string
   ): void {
-    this.bot.pathfinder.stop();
+    this.movement.hold();
     this.memory.updateRecoveryJobStatus(id, status, reason);
     if (!this.memory.activeRecoveryJob()) {
       const project =

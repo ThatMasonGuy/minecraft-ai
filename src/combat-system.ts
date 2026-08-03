@@ -11,7 +11,10 @@ import {
   normalizedEntityName
 } from "./entity-classification.js";
 import type { EpisodicMemory } from "./memory.js";
-import type { MovementDanger, MovementSystem } from "./movement-system.js";
+import type {
+  CombatMovementSystem,
+  MovementDanger
+} from "./movement-system.js";
 import type { ActivityUpdate, Position } from "./types.js";
 
 const ATTACK_RANGE = 3.15;
@@ -120,7 +123,7 @@ export class CombatSystem {
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
-    private readonly movement: MovementSystem,
+    private readonly movement: CombatMovementSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly execution?: ExecutionScope
   ) {}
@@ -657,9 +660,8 @@ export class CombatSystem {
     this.mode = "striking";
     this.movement.hold();
     this.lowerShield();
-    await this.bot.lookAt(
-      target.position.offset(0, Math.max(0.5, target.height / 2), 0),
-      true
+    await this.movement.face(
+      target.position.offset(0, Math.max(0.5, target.height / 2), 0)
     );
     if (
       !target.isValid ||
@@ -722,9 +724,8 @@ export class CombatSystem {
           this.bot.entity.position.distanceTo(b.position)
       )[0];
     if (!threat || Date.now() < this.nextAttackAt) return;
-    await this.bot.lookAt(
-      threat.position.offset(0, Math.max(0.5, threat.height / 2), 0),
-      true
+    await this.movement.face(
+      threat.position.offset(0, Math.max(0.5, threat.height / 2), 0)
     );
     this.bot.attack(threat);
     this.lastSwingAt = Date.now();

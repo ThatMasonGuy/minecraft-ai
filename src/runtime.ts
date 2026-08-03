@@ -29,7 +29,7 @@ import { ViewerStatusStore } from "./viewer-status.js";
 import { WorkExecutor } from "./work-executor.js";
 
 const require = createRequire(import.meta.url);
-const { Movements, pathfinder } = require(
+const { pathfinder } = require(
   "mineflayer-pathfinder"
 ) as typeof import("mineflayer-pathfinder");
 const armorManager = require(
@@ -107,13 +107,8 @@ export class MinecraftRuntime {
 
   private attachLifecycle(bot: Bot): void {
     bot.once("spawn", async () => {
-      const movements = new Movements(bot);
-      movements.canDig = false;
-      movements.canOpenDoors = true;
-      movements.allow1by1towers = false;
-      movements.allowParkour = false;
-      movements.allowSprinting = true;
-      bot.pathfinder.setMovements(movements);
+      const movementSystem = new PathfinderMovementSystem(bot);
+      movementSystem.configureBase();
       const executionCoordinator = new ExecutionCoordinator(bot);
       this.executionCoordinator = executionCoordinator;
       bot.autoEat.setOpts({
@@ -137,7 +132,6 @@ export class MinecraftRuntime {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[survival] Armour manager failed: ${message}`);
       });
-      const movementSystem = new PathfinderMovementSystem(bot);
       this.combatSystem = new CombatSystem(
         bot,
         this.memory,
@@ -171,12 +165,14 @@ export class MinecraftRuntime {
         bot,
         this.memory,
         perception,
+        movementSystem,
         config.maxMoveDistance
       );
       this.recoveryExecutor = new RecoveryExecutor(
         bot,
         this.memory,
         actions,
+        movementSystem,
         (activity) => this.viewerStatus.setWork(activity),
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
@@ -189,6 +185,7 @@ export class MinecraftRuntime {
         bot,
         this.memory,
         actions,
+        movementSystem,
         (activity) => this.viewerStatus.setWork(activity),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
@@ -282,6 +279,7 @@ export class MinecraftRuntime {
         this.memory,
         perception,
         actions,
+        movementSystem,
         config.workExecutorTickMs,
         (activity) => {
           if (

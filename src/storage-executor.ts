@@ -1,15 +1,9 @@
-import { createRequire } from "node:module";
 import type { Bot } from "mineflayer";
 import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { ActivityUpdate, OwnedContainer, ProjectPlan } from "./types.js";
-
-const require = createRequire(import.meta.url);
-const { goals } = require(
-  "mineflayer-pathfinder"
-) as typeof import("mineflayer-pathfinder");
-const { GoalNear } = goals;
+import type { MovementSystem } from "./movement-system.js";
 
 const INVENTORY_PRESSURE_SLOTS = 2;
 
@@ -22,6 +16,7 @@ export class StorageExecutor {
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
     private readonly actions: MinecraftActions,
+    private readonly movement: MovementSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPause?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -86,14 +81,7 @@ export class StorageExecutor {
           "Returning to owned storage",
           `${Math.ceil(distance)} blocks to ${container.label ?? container.blockName}`
         );
-        await this.bot.pathfinder.goto(
-          new GoalNear(
-            container.position.x,
-            container.position.y,
-            container.position.z,
-            2
-          )
-        );
+        await this.movement.goNear(container.position, 2);
         return;
       }
 

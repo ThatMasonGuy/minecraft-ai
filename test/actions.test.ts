@@ -6,6 +6,7 @@ import {
 } from "../src/actions.js";
 import type { EpisodicMemory } from "../src/memory.js";
 import type { Perception } from "../src/perception.js";
+import type { MovementSystem } from "../src/movement-system.js";
 
 describe("planner action boundary", () => {
   it("exposes only high-level outcome tools to the planner", () => {
@@ -13,6 +14,7 @@ describe("planner action boundary", () => {
       {} as Bot,
       {} as EpisodicMemory,
       {} as Perception,
+      {} as MovementSystem,
       32
     );
     const names = actions.plannerDefinitions().map((definition) => definition.name);

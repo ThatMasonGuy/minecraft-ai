@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
@@ -13,11 +12,11 @@ import {
 } from "./project-plan.js";
 import {
   appendTraversalCell,
-  DeterministicNavigator,
   isCurrentSupportBlock,
   nextReverseTraversalTarget,
   type TraversalJournal
 } from "./navigation.js";
+import type { MovementSystem } from "./movement-system.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
 import type {
   ActivityUpdate,
@@ -29,12 +28,6 @@ import type {
   StructureCheck
 } from "./types.js";
 import { spiralOffset } from "./work-executor.js";
-
-const require = createRequire(import.meta.url);
-const { goals, Movements } = require(
-  "mineflayer-pathfinder"
-) as typeof import("mineflayer-pathfinder");
-const { GoalBlock, GoalLookAtBlock, GoalNear } = goals;
 
 const REPLACEABLE_BLOCKS = new Set([
   "air",
@@ -94,20 +87,17 @@ export class ProjectExecutor {
   private timer?: NodeJS.Timeout;
   private running = false;
   private lastState?: string;
-  private readonly navigator: DeterministicNavigator;
-
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
     private readonly actions: MinecraftActions,
+    private readonly movement: MovementSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
-  ) {
-    this.navigator = new DeterministicNavigator(bot);
-  }
+  ) {}
 
   start(): void {
     this.timer = setInterval(() => this.runTick(), this.tickMs);
@@ -228,14 +218,7 @@ export class ProjectExecutor {
         "Returning to remembered project site",
         `${Math.ceil(distance)} blocks away`
       );
-      await this.bot.pathfinder.goto(
-        new GoalNear(
-          spec.position.x,
-          spec.position.y,
-          spec.position.z,
-          4
-        )
-      );
+      await this.movement.goNear(spec.position, 4);
     }
     project.anchor = spec.position;
     this.finishStep(
@@ -476,7 +459,7 @@ export class ProjectExecutor {
         "Following the recorded traversal back to the surface",
         `Checkpoint ${next.cursor + 1}/${state.traversal.cells.length}`
       );
-      const result = await this.navigator.reachExact(next.target!);
+      const result = await this.movement.reachExact(next.target!);
       if (result.status === "reached") {
         state.returnCursor = next.cursor;
         state.returnFailures = 0;
@@ -561,7 +544,7 @@ export class ProjectExecutor {
           8
         ) {
           const navigation =
-            await this.navigator.reachSurfaceArea(
+            await this.movement.reachSurfaceArea(
               table.position,
               4
             );
@@ -570,17 +553,7 @@ export class ProjectExecutor {
           }
           return;
         }
-        await withTimeout(
-          this.bot.pathfinder.goto(
-            new GoalLookAtBlock(
-              table.position,
-              this.bot.world,
-              { reach: 4 }
-            )
-          ),
-          20_000,
-          () => this.bot.pathfinder.stop()
-        );
+        await this.movement.positionForBlock(table.position, 4, 20_000);
         if (
           distanceBetween(
             this.bot.entity.position,
@@ -619,10 +592,7 @@ export class ProjectExecutor {
     }
     if (table) {
       table = this.bot.blockAt(table.position) ?? table;
-      await this.bot.lookAt(
-        table.position.offset(0.5, 0.5, 0.5),
-        true
-      );
+      await this.movement.face(table.position.offset(0.5, 0.5, 0.5));
       console.log(
         `[project] Using crafting table at ${table.position.x}, ` +
           `${table.position.y}, ${table.position.z} from ` +
@@ -806,14 +776,7 @@ export class ProjectExecutor {
       this.blockProject(project, "Required furnace is not at the planned location");
       return;
     }
-    await this.bot.pathfinder.goto(
-      new GoalNear(
-        furnaceBlock.position.x,
-        furnaceBlock.position.y,
-        furnaceBlock.position.z,
-        2
-      )
-    );
+    await this.movement.goNear(furnaceBlock.position, 2);
     const furnace = await this.bot.openFurnace(furnaceBlock);
     try {
       const output = furnace.outputItem();
@@ -1036,9 +999,7 @@ export class ProjectExecutor {
         `Step ${descentIndex}/${totalDescent}`
       );
       if (distanceBetween(this.bot.entity.position, next) > 5) {
-        await this.bot.pathfinder.goto(
-          new GoalNear(next.x, next.y, next.z, 2)
-        );
+        await this.movement.goNear(next, 2);
       }
       try {
         state.excavatedBlocks += await this.excavateAndEnter(next, 3);
@@ -1107,14 +1068,7 @@ export class ProjectExecutor {
           headingVector(descentHeading).z * totalDescent
       };
       if (distanceBetween(this.bot.entity.position, state.tunnelOrigin) > 3) {
-        await this.bot.pathfinder.goto(
-          new GoalNear(
-            state.tunnelOrigin.x,
-            state.tunnelOrigin.y,
-            state.tunnelOrigin.z,
-            1
-          )
-        );
+        await this.movement.goNear(state.tunnelOrigin, 1);
       }
       appendTraversalCell(
         state.traversal,
@@ -1171,13 +1125,7 @@ export class ProjectExecutor {
         "Returning to the saved branch-mine cursor",
         `Route ${state.routeIndex + 1}/${route.length}`
       );
-      await withTimeout(
-        this.bot.pathfinder.goto(
-          new GoalNear(routeCursor.x, routeCursor.y, routeCursor.z, 1)
-        ),
-        20_000,
-        () => this.bot.pathfinder.stop()
-      );
+      await this.movement.goNear(routeCursor, 1, 20_000);
       return;
     }
 
@@ -1449,18 +1397,7 @@ export class ProjectExecutor {
           "Collecting food drops",
           "Returning to the last visible animal"
         );
-        await withTimeout(
-          this.bot.pathfinder.goto(
-            new GoalNear(
-              state.forageTargetPosition.x,
-              state.forageTargetPosition.y,
-              state.forageTargetPosition.z,
-              1
-            )
-          ),
-          15_000,
-          () => this.bot.pathfinder.stop()
-        );
+        await this.movement.goNear(state.forageTargetPosition, 1, 15_000);
         return true;
       }
       state.forageTargetId = undefined;
@@ -1483,18 +1420,7 @@ export class ProjectExecutor {
         `${safeFoodCount(this.bot)}/3 reserve items`
       );
       if (distance > 3.2) {
-        await withTimeout(
-          this.bot.pathfinder.goto(
-            new GoalNear(
-              target.position.x,
-              target.position.y,
-              target.position.z,
-              2
-            )
-          ),
-          12_000,
-          () => this.bot.pathfinder.stop()
-        );
+        await this.movement.goNear(target.position, 2, 12_000);
         return true;
       }
       if (
@@ -1511,13 +1437,12 @@ export class ProjectExecutor {
             item.name.endsWith("_axe")
         )[0];
       if (weapon) await this.bot.equip(weapon, "hand");
-      await this.bot.lookAt(
+      await this.movement.face(
         target.position.offset(
           0,
           Math.max(0.4, target.height / 2),
           0
-        ),
-        true
+        )
       );
       this.bot.attack(target);
       state.lastForageAttackAt = Date.now();
@@ -1597,7 +1522,7 @@ export class ProjectExecutor {
         );
       }
       if (!this.bot.canSeeBlock(block)) {
-        await this.bot.lookAt(block.position.offset(0.5, 0.5, 0.5), true);
+        await this.movement.face(block.position.offset(0.5, 0.5, 0.5));
         block = this.bot.blockAt(position);
       }
       if (!block || !this.bot.canDigBlock(block)) {
@@ -1617,7 +1542,7 @@ export class ProjectExecutor {
     console.log(
       `[prospect] Entering opened cell ${target.x}, ${target.y}, ${target.z}`
     );
-    this.bot.pathfinder.stop();
+    this.movement.hold();
     if (
       !this.bot.entity.position
         .floored()
@@ -1772,18 +1697,7 @@ export class ProjectExecutor {
               distanceBetween(this.bot.entity.position, rememberedTable.position)
             )} blocks away`
           );
-          await withTimeout(
-            this.bot.pathfinder.goto(
-              new GoalNear(
-                rememberedTable.position.x,
-                rememberedTable.position.y,
-                rememberedTable.position.z,
-                3
-              )
-            ),
-            45_000,
-            () => this.bot.pathfinder.stop()
-          );
+          await this.movement.goNear(rememberedTable.position, 3);
           return "working";
         }
         localTable = rememberedTable;
@@ -1816,13 +1730,7 @@ export class ProjectExecutor {
       }
       return "impossible";
     }
-    await withTimeout(
-      this.bot.pathfinder.goto(
-        new GoalNear(project.anchor.x, project.anchor.y, project.anchor.z, 4)
-      ),
-      20_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.goNear(project.anchor, 4, 20_000);
     let table = relativeTable
       ? this.blockAtRelative(project, relativeTable)
       : undefined;
@@ -1837,9 +1745,7 @@ export class ProjectExecutor {
       }
     }
     if (!table || table.name !== "crafting_table") return "impossible";
-    await this.bot.pathfinder.goto(
-      new GoalNear(table.position.x, table.position.y, table.position.z, 2)
-    );
+    await this.movement.goNear(table.position, 2);
     const item = this.bot.registry.itemsByName.stone_pickaxe;
     if (!item) return "impossible";
     const recipe = this.bot.recipesFor(item.id, null, 1, table)[0];
@@ -1934,74 +1840,7 @@ export class ProjectExecutor {
     target: Position,
     jump: boolean
   ): Promise<void> {
-    const targetVector = new Vec3(target.x, target.y, target.z);
-    this.bot.pathfinder.stop();
-    this.bot.clearControlStates();
-    const previousMovements = this.bot.pathfinder.movements;
-    const movements = new Movements(this.bot);
-    movements.canDig = false;
-    movements.canOpenDoors = true;
-    movements.allow1by1towers = false;
-    movements.allowParkour = false;
-    movements.allowSprinting = false;
-    this.bot.pathfinder.setMovements(movements);
-    try {
-      await withTimeout(
-        this.bot.pathfinder.goto(
-          new GoalBlock(target.x, target.y, target.z)
-        ),
-        4_000,
-        () => this.bot.pathfinder.stop()
-      );
-      if (this.bot.entity.position.floored().equals(targetVector)) {
-        return;
-      }
-    } catch {
-      // A short direct-control attempt below handles tight stair geometry.
-    } finally {
-      this.bot.pathfinder.stop();
-      this.bot.pathfinder.setMovements(previousMovements);
-    }
-
-    this.bot.clearControlStates();
-    await this.bot.lookAt(
-      targetVector.offset(0.5, 1, 0.5),
-      true
-    );
-    this.bot.setControlState("forward", true);
-    if (jump) {
-      await delay(100);
-      this.bot.setControlState("jump", true);
-    }
-    try {
-      const deadline = Date.now() + 3_000;
-      let bestHorizontalDistance = Number.POSITIVE_INFINITY;
-      while (
-        Date.now() < deadline &&
-        !this.bot.entity.position.floored().equals(targetVector)
-      ) {
-        const horizontalDistance = Math.hypot(
-          this.bot.entity.position.x - (target.x + 0.5),
-          this.bot.entity.position.z - (target.z + 0.5)
-        );
-        if (horizontalDistance > bestHorizontalDistance + 0.75) break;
-        bestHorizontalDistance = Math.min(
-          bestHorizontalDistance,
-          horizontalDistance
-        );
-        await delay(50);
-      }
-    } finally {
-      this.bot.setControlState("forward", false);
-      this.bot.setControlState("jump", false);
-    }
-    const reached = this.bot.entity.position.floored();
-    if (!reached.equals(targetVector)) {
-      throw new Error(
-        `adjacent stair movement reached ${reached.x},${reached.y},${reached.z} ` +
-          `instead of ${target.x},${target.y},${target.z}`
-      );
-    }
+    await this.movement.stepToAdjacent(target, jump);
   }
 
   private async buildStairLanding(position: Position): Promise<boolean> {
@@ -2048,13 +1887,7 @@ export class ProjectExecutor {
   }
 
   private async moveToExactCell(position: Position): Promise<void> {
-    await withTimeout(
-      this.bot.pathfinder.goto(
-        new GoalNear(position.x, position.y, position.z, 0)
-      ),
-      12_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.goNear(position, 0, 12_000);
     const reached = this.bot.entity.position.floored();
     if (!reached.equals(new Vec3(position.x, position.y, position.z))) {
       throw new Error(
@@ -2138,13 +1971,7 @@ export class ProjectExecutor {
         "Returning to owned storage",
         `${Math.ceil(distance)} blocks away`
       );
-      await withTimeout(
-        this.bot.pathfinder.goto(
-          new GoalNear(position.x, position.y, position.z, 2)
-        ),
-        30_000,
-        () => this.bot.pathfinder.stop()
-      );
+      await this.movement.goNear(position, 2, 30_000);
       return;
     }
 
@@ -2327,8 +2154,9 @@ export class ProjectExecutor {
     }
 
     if (this.bot.entity.position.floored().equals(targetVector)) {
-      await this.bot.pathfinder.goto(
-        new GoalNear(anchor.x - 2, anchor.y, anchor.z - 2, 1)
+      await this.movement.goNear(
+        { x: anchor.x - 2, y: anchor.y, z: anchor.z - 2 },
+        1
       );
     }
 
@@ -2350,15 +2178,16 @@ export class ProjectExecutor {
       );
     if (!reference?.block) throw new Error("no adjacent support block");
 
-    await this.bot.pathfinder.goto(
-      new GoalNear(target.x, Math.min(target.y, anchor.y), target.z, 3)
+    await this.movement.goNear(
+      { x: target.x, y: Math.min(target.y, anchor.y), z: target.z },
+      3
     );
     const item = this.bot.inventory
       .items()
       .find((candidate) => candidate.name === placement.itemName);
     if (!item) throw new Error(`${placement.itemName} is missing`);
     await this.bot.equip(item, "hand");
-    await this.bot.lookAt(targetVector.offset(0.5, 0.5, 0.5), true);
+    await this.movement.face(targetVector.offset(0.5, 0.5, 0.5));
     await this.bot.placeBlock(reference.block, reference.face);
     if (isStorageBlock(placement.itemName)) {
       this.memory.registerOwnedContainer(

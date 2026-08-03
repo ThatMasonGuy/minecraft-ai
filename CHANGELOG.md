@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Consolidated Pathfinder goals, route timeouts, exact-cell traversal, direct control, orientation, and escape routing behind the shared movement-system API; deterministic consumers no longer implement their own locomotion.
 - Replaced the coupled self-defence executor with an enclosed combat system that owns encounter policy, equipment, server-tick attack cadence, strike spacing, shields, recovery, loot, and encounter telemetry while delegating every route to the shared movement system.
 - Made player combat an unconditional safety boundary: players are never targeted, and a second hit from the same player within 30 seconds triggers a high-priority non-retaliatory escape.
 - Moved an immediate wooden defence weapon ahead of quarrying in newly generated mining progressions.
@@ -17,6 +18,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added an architecture boundary test that rejects locomotion, orientation, and control-state mutations outside the movement subsystem.
 - Added deterministic combat policy coverage for unarmed, ranged, explosive, multi-hostile, weapon-selection, cooldown, and repeated-player-aggression behavior.
 - Added a shared movement-system interface with reusable follow, approach, hold, and multi-threat escape routing outcomes for deterministic subsystems.
 - Added a manual planner mode with explicit `!plan <task>` turns so development does not generate scheduled or incidental API traffic.

@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import type { Bot } from "mineflayer";
 import { Vec3 } from "vec3";
 import { z } from "zod";
@@ -9,17 +8,11 @@ import {
   validateProjectSemantics
 } from "./project-plan.js";
 import {
-  DeterministicNavigator,
   isCurrentSupportBlock
 } from "./navigation.js";
+import type { MovementSystem } from "./movement-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
-
-const require = createRequire(import.meta.url);
-const { goals } = require(
-  "mineflayer-pathfinder"
-) as typeof import("mineflayer-pathfinder");
-const { GoalNear, GoalLookAtBlock } = goals;
 
 export type AgentToolDefinition = {
   type: "function";
@@ -31,16 +24,13 @@ export type AgentToolDefinition = {
 
 export class MinecraftActions {
   private actionQueue: Promise<void> = Promise.resolve();
-  private readonly navigator: DeterministicNavigator;
-
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
+    private readonly movement: MovementSystem,
     private readonly maxMoveDistance: number
-  ) {
-    this.navigator = new DeterministicNavigator(bot);
-  }
+  ) {}
 
   definitions(): AgentToolDefinition[] {
     return [
@@ -470,11 +460,7 @@ export class MinecraftActions {
         `Target is ${distance.toFixed(1)} blocks away; maximum per move is ${this.maxMoveDistance}`
       );
     }
-    await withTimeout(
-      this.bot.pathfinder.goto(new GoalNear(args.x, args.y, args.z, args.range)),
-      45_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.goNear(args, args.range);
     return ok("Reached the target area", this.perception.observe());
   }
 
@@ -496,7 +482,7 @@ export class MinecraftActions {
       );
     }
     await this.openNearbyExits();
-    const navigation = await this.navigator.reachSurfaceArea(
+    const navigation = await this.movement.reachSurfaceArea(
       target,
       args.range
     );
@@ -549,13 +535,7 @@ export class MinecraftActions {
     const position = new Vec3(args.x, args.y, args.z);
     let block = this.bot.blockAt(position);
     if (!block || !this.bot.canSeeBlock(block) || !this.bot.canDigBlock(block)) {
-      await withTimeout(
-        this.bot.pathfinder.goto(
-          new GoalLookAtBlock(position, this.bot.world, { reach: 4.5 })
-        ),
-        30_000,
-        () => this.bot.pathfinder.stop()
-      );
+      await this.movement.positionForBlock(args);
       block = this.bot.blockAt(position);
     }
     if (!block || block.name === "air") return fail("The observed block is no longer there");
@@ -569,12 +549,10 @@ export class MinecraftActions {
       () => this.bot.stopDigging()
     );
     try {
-      await withTimeout(
-        this.bot.pathfinder.goto(
-          new GoalNear(args.x, this.bot.entity.position.y, args.z, 1)
-        ),
-        10_000,
-        () => this.bot.pathfinder.stop()
+      await this.movement.goNear(
+        { x: args.x, y: this.bot.entity.position.y, z: args.z },
+        1,
+        10_000
       );
     } catch {
       // Mining succeeded; collection is best-effort because drops can move or fall.
@@ -616,13 +594,11 @@ export class MinecraftActions {
       args.reference_y,
       args.reference_z
     );
-    await withTimeout(
-      this.bot.pathfinder.goto(
-        new GoalLookAtBlock(referencePosition, this.bot.world, { reach: 4.5 })
-      ),
-      30_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.positionForBlock({
+      x: args.reference_x,
+      y: args.reference_y,
+      z: args.reference_z
+    });
     const reference = this.bot.blockAt(referencePosition);
     if (!reference || !this.bot.canSeeBlock(reference)) {
       return fail("The reference block is no longer visible");
@@ -719,13 +695,7 @@ export class MinecraftActions {
         "Combat movement is owned by the deterministic survival controller"
       );
     }
-    await withTimeout(
-      this.bot.pathfinder.goto(
-        new GoalNear(entity.position.x, entity.position.y, entity.position.z, range)
-      ),
-      30_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.goNear(entity.position, range, 30_000);
     return ok(`Approached ${visible.username ?? visible.name}`, this.perception.observe());
   }
 
@@ -737,11 +707,7 @@ export class MinecraftActions {
     const position = new Vec3(args.x, args.y, args.z);
     const bed = this.bot.blockAt(position);
     if (!bed || !bed.name.includes("bed")) return fail("The observed block is not a bed");
-    await withTimeout(
-      this.bot.pathfinder.goto(new GoalNear(args.x, args.y, args.z, 2)),
-      30_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.goNear(args, 2, 30_000);
     if (!this.bot.canSeeBlock(bed)) return fail("The bed is no longer visible");
     await this.bot.sleep(bed);
     return ok(`Sleeping in ${bed.name}`);
@@ -766,13 +732,7 @@ export class MinecraftActions {
     if (stacks.length === 0) return ok(`No ${args.item_name} to deposit`);
 
     const position = new Vec3(args.x, args.y, args.z);
-    await withTimeout(
-      this.bot.pathfinder.goto(
-        new GoalLookAtBlock(position, this.bot.world, { reach: 4.5 })
-      ),
-      30_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.positionForBlock(args);
     const block = this.bot.blockAt(position);
     if (!block || !isStorageBlock(block.name) || !this.bot.canSeeBlock(block)) {
       return fail("The storage container is no longer visible");
@@ -819,13 +779,7 @@ export class MinecraftActions {
       );
     if (!owned) return fail("That container is not registered as owned");
     const position = new Vec3(args.x, args.y, args.z);
-    await withTimeout(
-      this.bot.pathfinder.goto(
-        new GoalLookAtBlock(position, this.bot.world, { reach: 4.5 })
-      ),
-      30_000,
-      () => this.bot.pathfinder.stop()
-    );
+    await this.movement.positionForBlock(args);
     const block = this.bot.blockAt(position);
     if (!block || !isStorageBlock(block.name) || !this.bot.canSeeBlock(block)) {
       return fail("The owned storage container is unavailable");
