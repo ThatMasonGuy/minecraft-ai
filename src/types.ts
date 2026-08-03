@@ -97,9 +97,12 @@ export interface GatherBlocksWorkSpec {
     | { mode: "container"; position: Position };
 }
 
+export type TaskOrigin = "planner" | "operator";
+
 export interface WorkOrder {
   id: number;
   kind: "gather_blocks";
+  origin: TaskOrigin;
   spec: GatherBlocksWorkSpec;
   status: "active" | "completed" | "blocked" | "cancelled";
   statusReason?: string;
@@ -230,6 +233,7 @@ export interface ProjectPlan {
   id: number;
   goalId?: number;
   title: string;
+  origin: TaskOrigin;
   completionSummary: string;
   status: "active" | "completed" | "blocked" | "cancelled";
   statusReason?: string;

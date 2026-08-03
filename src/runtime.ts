@@ -10,6 +10,11 @@ import { DefenseExecutor } from "./defense-executor.js";
 import type { EpisodicMemory } from "./memory.js";
 import { Perception } from "./perception.js";
 import { parsePlanningCommand } from "./planner-mode.js";
+import { OperatorControl } from "./operator-control.js";
+import {
+  startOperatorServer,
+  type OperatorServer
+} from "./operator-server.js";
 import { ProjectExecutor } from "./project-executor.js";
 import {
   RecoveryExecutor,
@@ -37,6 +42,7 @@ export class MinecraftRuntime {
   private storageExecutor?: StorageExecutor;
   private reconnectTimer?: NodeJS.Timeout;
   private viewer?: ViewerServer;
+  private operator?: OperatorServer;
   private stopping = false;
   private vitalsDangerous = false;
   private lastLivingInventory: Array<{ name: string; count: number }> = [];
@@ -61,6 +67,8 @@ export class MinecraftRuntime {
     this.reconnectTimer = undefined;
     if (this.viewer) void this.viewer.close();
     this.viewer = undefined;
+    if (this.operator) void this.operator.close();
+    this.operator = undefined;
     this.bot?.quit("Agent shutting down");
   }
 
@@ -182,6 +190,34 @@ export class MinecraftRuntime {
         identitySeed: `${config.minecraft.host}:${config.minecraft.port}:${config.minecraft.username}`,
         onActivity: (activity) => this.viewerStatus.setAgent(activity)
       });
+      if (config.operatorEnabled) {
+        const control = new OperatorControl({
+          memory: this.memory,
+          inventoryCount: (itemName) =>
+            bot.inventory
+              .items()
+              .filter((item) => item.name === itemName)
+              .reduce((total, item) => total + item.count, 0),
+          requestPlanning: (task) => this.agent?.wake(task),
+          plannerMode: config.plannerMode,
+          model: config.openaiModel
+        });
+        try {
+          this.operator = await startOperatorServer({
+            host: config.operatorHost,
+            port: config.operatorPort,
+            control
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.memory.record({
+            kind: "operator_server_error",
+            summary: `Local operator server failed to start: ${message}`,
+            importance: 9
+          });
+          console.error(`[operator] Failed to start: ${message}`);
+        }
+      }
       this.workExecutor = new WorkExecutor(
         this.memory,
         perception,
@@ -419,6 +455,17 @@ export class MinecraftRuntime {
       this.projectExecutor = undefined;
       this.recoveryExecutor = undefined;
       this.storageExecutor = undefined;
+      const operator = this.operator;
+      this.operator = undefined;
+      if (operator) {
+        void operator.close().catch((error: unknown) => {
+          console.warn(
+            `[operator] Cleanup after disconnect failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        });
+      }
       if (this.bot === bot) this.bot = undefined;
       const viewer = this.viewer;
       this.viewer = undefined;

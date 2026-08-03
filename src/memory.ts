@@ -20,6 +20,7 @@ import type {
   ProjectPlan,
   ProjectPlanDraft,
   RecoveryJob,
+  TaskOrigin,
   WorkOrder
 } from "./types.js";
 
@@ -50,6 +51,7 @@ interface GoalRow {
 interface WorkOrderRow {
   id: number;
   kind: WorkOrder["kind"];
+  origin: TaskOrigin;
   spec_json: string;
   status: WorkOrder["status"];
   status_reason: string | null;
@@ -64,6 +66,7 @@ interface ProjectRow {
   id: number;
   goal_id: number | null;
   title: string;
+  origin: TaskOrigin;
   completion_summary: string;
   status: ProjectPlan["status"];
   status_reason: string | null;
@@ -221,6 +224,7 @@ export class EpisodicMemory {
       CREATE TABLE IF NOT EXISTS work_orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         kind TEXT NOT NULL,
+        origin TEXT NOT NULL DEFAULT 'planner',
         spec_json TEXT NOT NULL,
         status TEXT NOT NULL
           CHECK(status IN ('active', 'completed', 'blocked', 'cancelled')),
@@ -236,6 +240,7 @@ export class EpisodicMemory {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         goal_id INTEGER,
         title TEXT NOT NULL,
+        origin TEXT NOT NULL DEFAULT 'planner',
         completion_summary TEXT NOT NULL,
         status TEXT NOT NULL
           CHECK(status IN ('active', 'completed', 'blocked', 'cancelled')),
@@ -369,6 +374,16 @@ export class EpisodicMemory {
       "INTEGER NOT NULL DEFAULT 0"
     );
     this.ensureColumn("work_orders", "minimum_reached_at", "TEXT");
+    this.ensureColumn(
+      "work_orders",
+      "origin",
+      "TEXT NOT NULL DEFAULT 'planner'"
+    );
+    this.ensureColumn(
+      "projects",
+      "origin",
+      "TEXT NOT NULL DEFAULT 'planner'"
+    );
     this.ensureColumn(
       "recovery_jobs",
       "loaded_chunk_ms",
@@ -913,7 +928,10 @@ export class EpisodicMemory {
     return toProjectPlan(row);
   }
 
-  createProjectPlan(draft: ProjectPlanDraft): ProjectPlan {
+  createProjectPlan(
+    draft: ProjectPlanDraft,
+    origin: TaskOrigin = "planner"
+  ): ProjectPlan {
     const now = new Date().toISOString();
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -943,13 +961,14 @@ export class EpisodicMemory {
       const result = this.db
         .prepare(`
           INSERT INTO projects(
-            goal_id, title, completion_summary, status, status_reason,
+            goal_id, title, origin, completion_summary, status, status_reason,
             current_step_index, anchor_json, steps_json, created_at, updated_at
-          ) VALUES (?, ?, ?, 'active', NULL, 0, NULL, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, 'active', NULL, 0, NULL, ?, ?, ?)
         `)
         .run(
           draft.goalId ?? null,
           draft.title,
+          origin,
           draft.completionSummary,
           JSON.stringify(steps),
           now,
@@ -989,7 +1008,8 @@ export class EpisodicMemory {
 
   createGatherBlocksWorkOrder(
     spec: GatherBlocksWorkSpec,
-    initialInventoryCount = 0
+    initialInventoryCount = 0,
+    origin: TaskOrigin = "planner"
   ): WorkOrder {
     const now = new Date().toISOString();
     this.db
@@ -1004,12 +1024,12 @@ export class EpisodicMemory {
     const result = this.db
       .prepare(`
         INSERT INTO work_orders(
-          kind, spec_json, status, status_reason,
+          kind, origin, spec_json, status, status_reason,
           progress_count, last_inventory_count, minimum_reached_at,
           created_at, updated_at
-        ) VALUES ('gather_blocks', ?, 'active', NULL, 0, ?, NULL, ?, ?)
+        ) VALUES ('gather_blocks', ?, ?, 'active', NULL, 0, ?, NULL, ?, ?)
       `)
-      .run(JSON.stringify(spec), initialInventoryCount, now, now);
+      .run(origin, JSON.stringify(spec), initialInventoryCount, now, now);
     return this.workOrderById(Number(result.lastInsertRowid));
   }
 
@@ -1427,6 +1447,7 @@ function toWorkOrder(row: WorkOrderRow): WorkOrder {
   return {
     id: row.id,
     kind: row.kind,
+    origin: row.origin,
     spec,
     status: row.status,
     statusReason: row.status_reason ?? undefined,
@@ -1443,6 +1464,7 @@ function toProjectPlan(row: ProjectRow): ProjectPlan {
     id: row.id,
     goalId: row.goal_id ?? undefined,
     title: row.title,
+    origin: row.origin,
     completionSummary: row.completion_summary,
     status: row.status,
     statusReason: row.status_reason ?? undefined,

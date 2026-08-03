@@ -23,6 +23,7 @@ describe("recovery continuity", () => {
   it("returns to the project site and replays its authored supply chain", () => {
     const project: ProjectPlan = {
       id: 4,
+      origin: "planner",
       title: "Mine diamonds",
       completionSummary: "Three diamonds recovered",
       status: "blocked",

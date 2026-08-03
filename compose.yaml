@@ -35,8 +35,12 @@ services:
       VIEWER_DISTANCE: "3"
       VIEWER_MAX_FPS: "30"
       VIEWER_MAX_PIXEL_RATIO: "1.25"
+      OPERATOR_ENABLED: "true"
+      OPERATOR_HOST: "0.0.0.0"
+      OPERATOR_PORT: "3008"
     ports:
       - "3007:3007"
+      - "127.0.0.1:3008:3008"
     volumes:
       - ./data:/app/data
     init: true

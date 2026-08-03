@@ -20,6 +20,7 @@ This is deliberately an embodied agent, not a server plugin:
 - Event-driven and scheduled autonomous decision turns
 - Persistent goals with model-chosen priorities
 - Persistent AI-authored project plans with deterministic execution and verification
+- Local operator task submission that bypasses the planner and records task provenance
 - Append-only episodic events, full observation payloads, FTS5 text recall, and spatial recall
 - Remembered public chat and whispers
 - First-person ray-sampled block perception and line-of-sight entity perception
@@ -47,6 +48,9 @@ VIEWER_PORT=3007
 VIEWER_DISTANCE=3
 VIEWER_MAX_FPS=30
 VIEWER_MAX_PIXEL_RATIO=1.25
+OPERATOR_ENABLED=true
+OPERATOR_HOST=127.0.0.1
+OPERATOR_PORT=3008
 ```
 
 Use `MC_AUTH=microsoft` for a licensed Java Edition account. On first launch, follow the Microsoft device-login message printed in the terminal. Its refresh token is retained under `data/auth/` so restarts do not require a fresh login.
@@ -67,6 +71,26 @@ npm run dev
 ```
 
 The current defaults connect to `localhost:25565`. Stop with `Ctrl+C`.
+
+Once the bot has spawned, the local operator interface accepts validated deterministic tasks without making an API call:
+
+```powershell
+npm run operator -- status
+npm run operator -- usage
+npm run operator -- gather --item oak_log --blocks oak_log --minimum 16
+npm run operator -- project .\path\to\project.json
+npm run operator -- cancel "Test finished"
+```
+
+Gather commands may add `--continuation until_replaced` and `--container x,y,z`. Project files use the same validated schema as planner-authored projects and must include deterministic verification. Operator-authored work is stored with `origin: operator`; it is test input, not evidence that the planner independently chose the task.
+
+The planner remains a separate, visibly paid path. Use this only for a deliberate one-off model test:
+
+```powershell
+npm run operator -- plan "Create one bounded task to test tool selection"
+```
+
+The CLI prints a paid-call warning, and the endpoint rejects planning while deterministic work is active. Depending on `MAX_TOOL_ROUNDS`, one request can include the initial call plus tool-result continuations. The control API binds to loopback by default. Compose exposes it only at `127.0.0.1:3008`; do not publish it to an untrusted network.
 
 ## Run continuously with Docker
 
@@ -102,6 +126,8 @@ Set `PLANNER_MODE=automatic` only for an intentional autonomous run. Automatic m
 The agent records exact API usage and checks a rolling 24-hour budget before every model call. By default, it stops spending at 850,000 processed tokens, reserving 150,000 tokens beneath the 1,000,000-token daily target for request-size variance. Configure this with `PLANNER_MODE`, `DAILY_TOKEN_BUDGET`, `DAILY_TOKEN_RESERVE`, `MAX_OUTPUT_TOKENS`, `AGENT_TICK_MS`, and `MAX_TOOL_ROUNDS`. Web search is available only when `WEB_SEARCH_ENABLED=true` and is billed when used.
 
 API attempts are also written to an append-only SQLite ledger with requested and returned model identifiers, response IDs, phase and trigger, latency, status, all reported token dimensions, raw usage JSON, web-search calls, and immutable estimated cost. Price versions are effective-dated so later price changes do not rewrite historical estimates. Reports aggregate lifetime, Brisbane calendar day, model, and phase totals while keeping incomplete historical pricing explicitly unknown.
+
+Use `npm run operator -- usage` for the same machine-readable lifetime, day, model, and phase aggregates while the runtime is connected. This report is read directly from the runtime's SQLite connection; external tools do not write to the database.
 
 Model pauses do not stop ordinary work. The planner can persist a gathering work order with a minimum success count and either stop at that milestone or continue until replaced. The deterministic executor finishes connected trunks, searches nearby through physical movement, tracks cumulative yield across inventory deposits, and runs without API calls. Long-running orders can return to a known chest, trapped chest, or barrel when inventory space runs low, deposit the gathered item, and resume. It still pauses for unsafe survival conditions and stops when movement, storage, or the requested resource becomes genuinely unavailable.
 

@@ -32,6 +32,7 @@ describe("selectPrimaryGoal", () => {
     const workOrder: WorkOrder = {
       id: 4,
       kind: "gather_blocks",
+      origin: "planner",
       spec: {
         goalId: 2,
         itemName: "oak_log",

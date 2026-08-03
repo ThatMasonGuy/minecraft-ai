@@ -10,6 +10,8 @@ All notable changes to this project are recorded in this file.
 - Added repository operating rules for autonomous testing, targeted validation, frequent Git checkpoints, attribution, and changelog maintenance.
 - Added a permanent API usage and cost-accounting specification covering lifetime, daily, per-model, and per-workload reporting.
 - Added an append-only API usage ledger with legacy backfill, immutable price-version estimates, raw usage retention, request idempotency, failed-attempt records, and lifetime/day/model/phase aggregation.
+- Added a loopback-only operator API and CLI for zero-cost deterministic gather/project submission, cancellation, status, and usage reporting, with a separate explicitly paid planner endpoint.
+- Added durable planner/operator provenance to work orders and projects so operator test inputs cannot be presented as autonomous choices.
 
 ### Changed
 
