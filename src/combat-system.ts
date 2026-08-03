@@ -25,7 +25,7 @@ const STRIKE_SPACING_DISTANCE = 4.5;
 const MOB_ESCAPE_DISTANCE = 10;
 const RANGED_ESCAPE_DISTANCE = 24;
 const PLAYER_ESCAPE_DISTANCE = 18;
-const MAX_PURSUIT_DISTANCE = 16;
+export const MAX_COMBAT_PURSUIT_DISTANCE = 16;
 const PASSIVE_SCAN_INTERVAL_MS = 250;
 const CONTACT_TIMEOUT_MS = 15_000;
 const PLAYER_HIT_WINDOW_MS = 30_000;
@@ -188,6 +188,12 @@ export class CombatSystem {
     if (!target || !target.isValid || !this.sensing.hasLineOfSight(target)) {
       return "unavailable";
     }
+    if (
+      this.bot.entity.position.distanceTo(target.position) >
+      MAX_COMBAT_PURSUIT_DISTANCE
+    ) {
+      return "unavailable";
+    }
     if (isPlayerEntity(target)) return "rejected";
     this.beginMobEncounter(target, reason);
     const decision = this.assess(target, this.visibleHostiles());
@@ -208,7 +214,9 @@ export class CombatSystem {
       !target.isValid ||
       !this.sensing.hasLineOfSight(target) ||
       isPlayerEntity(target) ||
-      isRecognizedHostile(target)
+      isRecognizedHostile(target) ||
+      this.bot.entity.position.distanceTo(target.position) >
+        MAX_COMBAT_PURSUIT_DISTANCE
     ) {
       return "rejected";
     }
@@ -329,7 +337,7 @@ export class CombatSystem {
     }
 
     const distance = this.bot.entity.position.distanceTo(target.position);
-    if (distance > MAX_PURSUIT_DISTANCE) {
+    if (distance > MAX_COMBAT_PURSUIT_DISTANCE) {
       this.finishEncounter("disengaged", "The target left the pursuit boundary");
       this.resetToIdle("Stopped at the combat pursuit limit");
       return;
@@ -807,7 +815,7 @@ export class CombatSystem {
   private visibleHostiles(): Entity[] {
     const origin = this.bot.entity.position;
     return this.sensing
-      .visibleEntitiesRaw(MAX_PURSUIT_DISTANCE)
+      .visibleEntitiesRaw(MAX_COMBAT_PURSUIT_DISTANCE)
       .filter(isRecognizedHostile)
       .filter(
         (entity) => (this.recentlyDefeated.get(entity.id) ?? 0) <= Date.now()

@@ -1,4 +1,7 @@
-import type { CombatSystem } from "./combat-system.js";
+import {
+  MAX_COMBAT_PURSUIT_DISTANCE,
+  type CombatSystem
+} from "./combat-system.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import type { InventoryItem, InventorySystem } from "./inventory-system.js";
 import type { LootingSystem } from "./looting-system.js";
@@ -138,14 +141,18 @@ export class FoodProvisioningSystem {
       }
 
       const target = this.sensing
-        .visibleEntitiesRaw(32)
+        .visibleEntitiesRaw(MAX_COMBAT_PURSUIT_DISTANCE)
         .filter((entity) => foodAnimalPriority(entity.name ?? "") > 0)
         .sort(
           (left, right) =>
-            foodAnimalPriority(right.name ?? "") -
-              foodAnimalPriority(left.name ?? "") ||
-            distance(this.currentPosition(), left.position) -
+            foodAnimalScore(
+              right.name ?? "",
               distance(this.currentPosition(), right.position)
+            ) -
+              foodAnimalScore(
+                left.name ?? "",
+                distance(this.currentPosition(), left.position)
+              )
         )[0];
       if (target) {
         this.targetId = target.id;
@@ -273,6 +280,10 @@ export function foodAnimalPriority(name: string): number {
     default:
       return 0;
   }
+}
+
+export function foodAnimalScore(name: string, distanceToAnimal: number): number {
+  return foodAnimalPriority(name) * 2 - distanceToAnimal;
 }
 
 function foodPriority(name: string): number {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   FoodProvisioningSystem,
   foodAnimalPriority,
+  foodAnimalScore,
   needsFoodProvisioning,
   selectProvisioningFood
 } from "../src/food-provisioning-system.js";
@@ -70,5 +71,8 @@ describe("enclosed food provisioning", () => {
       foodAnimalPriority("chicken")
     );
     expect(foodAnimalPriority("zombie")).toBe(0);
+    expect(foodAnimalScore("chicken", 2)).toBeGreaterThan(
+      foodAnimalScore("cow", 14)
+    );
   });
 });

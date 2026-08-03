@@ -335,6 +335,11 @@ describe("combat API ownership", () => {
       height: 1.4,
       position: new Vec3(3, 64, 0)
     };
+    const farCow = {
+      ...cow,
+      id: 6,
+      position: new Vec3(20, 64, 0)
+    };
     const player = {
       id: 5,
       type: "player",
@@ -347,6 +352,7 @@ describe("combat API ownership", () => {
     };
     const entities = new Map([
       [cow.id, cow],
+      [farCow.id, farCow],
       [player.id, player]
     ]);
     const combat = new CombatSystem(
@@ -383,6 +389,9 @@ describe("combat API ownership", () => {
     );
 
     expect(combat.engageVisibleMob(player.id, "test request")).toBe("rejected");
+    expect(
+      combat.engageVisiblePassiveMob(farCow.id, "distant food acquisition")
+    ).toBe("rejected");
     expect(combat.engageVisiblePassiveMob(cow.id, "food acquisition")).toBe(
       "engaged"
     );
