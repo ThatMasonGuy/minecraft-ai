@@ -43,6 +43,14 @@ export interface MovementDanger {
   position: Pick<Position, "x" | "y" | "z">;
 }
 
+export interface TraversalPlacement {
+  placeTraversalBlock(
+    reference: Position,
+    face: Position,
+    itemName: string
+  ): Promise<boolean>;
+}
+
 export interface EscapeRequest {
   dangers: MovementDanger[];
   safeDistance: number;
@@ -68,6 +76,7 @@ export type NavigationResult =
  * escape-route selection.
  */
 export interface MovementSystem {
+  setTraversalPlacement(placement: TraversalPlacement): void;
   configureBase(): void;
   follow(entity: Entity, range: number): void;
   approach(position: Position, range: number): void;
@@ -98,6 +107,7 @@ export class PathfinderMovementSystem implements MovementSystem {
   private mode: "idle" | "follow" | "approach" | "escape" = "idle";
   private targetKey?: string;
   private lastEscapePlanAt = 0;
+  private traversalPlacement?: TraversalPlacement;
 
   constructor(
     private readonly bot: Bot,
@@ -112,6 +122,10 @@ export class PathfinderMovementSystem implements MovementSystem {
     movements.allowParkour = false;
     movements.allowSprinting = true;
     this.bot.pathfinder.setMovements(movements);
+  }
+
+  setTraversalPlacement(placement: TraversalPlacement): void {
+    this.traversalPlacement = placement;
   }
 
   follow(entity: Entity, range: number): void {
@@ -456,7 +470,16 @@ export class PathfinderMovementSystem implements MovementSystem {
         await wait(25);
       }
       if (this.bot.entity.position.y < current.y + 0.45) return false;
-      await this.bot.placeBlock(support, new Vec3(0, 1, 0));
+      if (
+        !this.traversalPlacement ||
+        !(await this.traversalPlacement.placeTraversalBlock(
+          toPosition(support.position),
+          { x: 0, y: 1, z: 0 },
+          scaffold.name
+        ))
+      ) {
+        return false;
+      }
     } catch {
       return false;
     } finally {
@@ -582,4 +605,8 @@ function horizontalDistance(
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function toPosition(position: Pick<Position, "x" | "y" | "z">): Position {
+  return { x: position.x, y: position.y, z: position.z };
 }

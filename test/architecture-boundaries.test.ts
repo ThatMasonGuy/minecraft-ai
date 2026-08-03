@@ -139,4 +139,23 @@ describe("enclosed subsystem boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("keeps block placement in building", () => {
+    const allowed = new Set([path.join(SOURCE_ROOT, "building-system.ts")]);
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            /(?:this\.)?bot\.placeBlock\s*\(/.test(line)
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
 });

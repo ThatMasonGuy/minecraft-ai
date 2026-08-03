@@ -9,6 +9,7 @@ import type { Perception } from "../src/perception.js";
 import type { MovementSystem } from "../src/movement-system.js";
 import type { InventorySystem } from "../src/inventory-system.js";
 import type { MiningSystem } from "../src/mining-system.js";
+import type { BuildingSystem } from "../src/building-system.js";
 
 describe("planner action boundary", () => {
   it("exposes only high-level outcome tools to the planner", () => {
@@ -19,6 +20,7 @@ describe("planner action boundary", () => {
       {} as MovementSystem,
       {} as InventorySystem,
       {} as MiningSystem,
+      {} as BuildingSystem,
       32
     );
     const names = actions.plannerDefinitions().map((definition) => definition.name);

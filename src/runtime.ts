@@ -14,6 +14,7 @@ import {
 } from "./inventory-system.js";
 import { MineflayerLootingSystem, type LootingSystem } from "./looting-system.js";
 import { MineflayerMiningSystem } from "./mining-system.js";
+import { MineflayerBuildingSystem } from "./building-system.js";
 import type { EpisodicMemory } from "./memory.js";
 import { PathfinderMovementSystem } from "./movement-system.js";
 import { Perception } from "./perception.js";
@@ -131,6 +132,15 @@ export class MinecraftRuntime {
         movementSystem,
         inventorySystem
       );
+      const buildingSystem = new MineflayerBuildingSystem(
+        bot,
+        this.memory,
+        perception,
+        movementSystem,
+        inventorySystem,
+        miningSystem
+      );
+      movementSystem.setTraversalPlacement(buildingSystem);
       const lootingSystem = new MineflayerLootingSystem(
         bot,
         this.memory,
@@ -201,6 +211,7 @@ export class MinecraftRuntime {
         movementSystem,
         inventorySystem,
         miningSystem,
+        buildingSystem,
         config.maxMoveDistance
       );
       this.recoveryExecutor = new RecoveryExecutor(
@@ -318,6 +329,7 @@ export class MinecraftRuntime {
         movementSystem,
         inventorySystem,
         miningSystem,
+        buildingSystem,
         config.workExecutorTickMs,
         (activity) => {
           if (

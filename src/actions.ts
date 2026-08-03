@@ -13,6 +13,7 @@ import {
 import type { MovementSystem } from "./movement-system.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { MiningSystem } from "./mining-system.js";
+import type { BuildingSystem } from "./building-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -33,6 +34,7 @@ export class MinecraftActions {
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
     private readonly mining: MiningSystem,
+    private readonly building: BuildingSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -574,27 +576,13 @@ export class MinecraftActions {
     ) {
       return fail("The reference block is not in the latest line-of-sight observation");
     }
-    const item = this.inventory.find(args.item_name);
-    if (!item) return fail(`${args.item_name} is not in inventory`);
-    const referencePosition = new Vec3(
-      args.reference_x,
-      args.reference_y,
-      args.reference_z
+    const placement = await this.building.placeAgainst(
+      { x: args.reference_x, y: args.reference_y, z: args.reference_z },
+      { x: args.face_x, y: args.face_y, z: args.face_z },
+      args.item_name,
+      true
     );
-    await this.movement.positionForBlock({
-      x: args.reference_x,
-      y: args.reference_y,
-      z: args.reference_z
-    });
-    const reference = this.perception.blockAt(referencePosition);
-    if (!reference || !this.perception.canSeeBlock(reference)) {
-      return fail("The reference block is no longer visible");
-    }
-    await this.inventory.equip(item, "hand");
-    await this.bot.placeBlock(
-      reference,
-      new Vec3(args.face_x, args.face_y, args.face_z)
-    );
+    if (placement.status === "blocked") return fail(placement.detail);
     if (isStorageBlock(args.item_name)) {
       this.memory.registerOwnedContainer(
         {

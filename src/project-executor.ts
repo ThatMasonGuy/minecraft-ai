@@ -19,6 +19,7 @@ import {
 import type { MovementSystem } from "./movement-system.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { MiningSystem } from "./mining-system.js";
+import type { BuildingSystem } from "./building-system.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
@@ -86,6 +87,7 @@ export class ProjectExecutor {
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
     private readonly mining: MiningSystem,
+    private readonly building: BuildingSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -636,8 +638,8 @@ export class ProjectExecutor {
     }
     if (!carried || !project.anchor) return undefined;
 
-    const placed = await this.placeCarriedUtilityBlock("crafting_table");
-    if (!placed) return undefined;
+    const placed = await this.building.placeNearby("crafting_table");
+    if (placed.status === "blocked") return undefined;
     const relative = {
       dx: placed.position.x - project.anchor.x,
       dy: placed.position.y - project.anchor.y,
@@ -658,7 +660,7 @@ export class ProjectExecutor {
       `[project] Restored crafting table at ` +
         `${placed.position.x}, ${placed.position.y}, ${placed.position.z}`
     );
-    return placed;
+    return placed.block;
   }
 
   private reopenCraftMaterialProducer(
@@ -750,15 +752,15 @@ export class ProjectExecutor {
       this.inventory.count("furnace") > 0 &&
       project.anchor
     ) {
-      const placed = await this.placeCarriedUtilityBlock("furnace");
-      if (placed) {
+      const placed = await this.building.placeNearby("furnace");
+      if (placed.status !== "blocked") {
         spec.furnaceAt = {
           dx: placed.position.x - project.anchor.x,
           dy: placed.position.y - project.anchor.y,
           dz: placed.position.z - project.anchor.z
         };
         this.memory.saveProject(project);
-        furnaceBlock = placed;
+        furnaceBlock = placed.block;
         console.log(
           `[project] Restored displaced furnace at ` +
             `${placed.position.x}, ${placed.position.y}, ${placed.position.z}`
@@ -964,7 +966,7 @@ export class ProjectExecutor {
         } catch (error) {
           if (
             previous.y < currentCell.y &&
-            (await this.buildStairLanding(previous))
+            (await this.building.buildStairLanding(previous))
           ) {
             state.surfaceOrigin.y += 1;
             this.memory.saveProject(project);
@@ -1139,7 +1141,7 @@ export class ProjectExecutor {
         (state.routeIndex + 1) % spec.torchSpacing === 0 &&
         state.routeIndex > 0
       ) {
-        await this.placeFloorTorch(route[state.routeIndex - 1]!);
+        await this.building.placeOnFloor(route[state.routeIndex - 1]!, "torch");
       }
       state.routeIndex += 1;
       state.failures = 0;
@@ -1473,26 +1475,6 @@ export class ProjectExecutor {
     return true;
   }
 
-  private async placeFloorTorch(position: Position): Promise<void> {
-    const torch = this.inventory
-      .items()
-      .find((item) => item.name === "torch");
-    if (!torch) return;
-    const target = new Vec3(position.x, position.y, position.z);
-    const existing = this.bot.blockAt(target);
-    const floor = this.bot.blockAt(target.offset(0, -1, 0));
-    if (
-      !existing ||
-      !isReplaceableBlockName(existing.name) ||
-      !floor ||
-      !isSolid(floor.name, floor.boundingBox)
-    ) {
-      return;
-    }
-    await this.inventory.equip(torch, "hand");
-    await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
-  }
-
   private calibrateStaircaseHeight(
     state: ProspectState,
     heading: "north" | "south" | "east" | "west"
@@ -1662,45 +1644,13 @@ export class ProjectExecutor {
     }
     if (!tableItem) return undefined;
 
-    const origin = this.bot.entity.position.floored();
-    const offsets: Vec3[] = [];
-    for (const dy of [0, 1, -1]) {
-      for (let distance = 1; distance <= 3; distance += 1) {
-        for (let dx = -distance; dx <= distance; dx += 1) {
-          const dz = distance - Math.abs(dx);
-          offsets.push(new Vec3(dx, dy, dz));
-          if (dz !== 0) offsets.push(new Vec3(dx, dy, -dz));
-        }
-      }
-    }
-    for (const offset of offsets) {
-      const target = origin.plus(offset);
-      const body = this.bot.blockAt(target);
-      const floor = this.bot.blockAt(target.offset(0, -1, 0));
-      if (
-        !body ||
-        !isReplaceableBlockName(body.name) ||
-        !floor ||
-        !isSolid(floor.name, floor.boundingBox)
-      ) {
-        continue;
-      }
-      try {
-        await this.inventory.equip(tableItem, "hand");
-        await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
-      } catch {
-        continue;
-      }
-      const placed = this.bot.blockAt(target);
-      if (placed?.name === "crafting_table") {
-        console.log(
-          `[prospect] Installed portable crafting table at ` +
-            `${target.x}, ${target.y}, ${target.z}`
-        );
-        return placed;
-      }
-    }
-    return undefined;
+    const placed = await this.building.placeNearby("crafting_table");
+    if (placed.status === "blocked") return undefined;
+    console.log(
+      `[prospect] Installed portable crafting table at ` +
+        `${placed.position.x}, ${placed.position.y}, ${placed.position.z}`
+    );
+    return placed.block;
   }
 
   private async stepToAdjacentCell(
@@ -1708,37 +1658,6 @@ export class ProjectExecutor {
     jump: boolean
   ): Promise<void> {
     await this.movement.stepToAdjacent(target, jump);
-  }
-
-  private async buildStairLanding(position: Position): Promise<boolean> {
-    const supportPosition = new Vec3(position.x, position.y, position.z);
-    const existing = this.bot.blockAt(supportPosition);
-    const floor = this.bot.blockAt(supportPosition.offset(0, -1, 0));
-    const cobblestone = this.inventory
-      .items()
-      .find((item) => item.name === "cobblestone");
-    if (
-      !existing ||
-      !isReplaceableBlockName(existing.name) ||
-      !floor ||
-      !isSolid(floor.name, floor.boundingBox) ||
-      !cobblestone
-    ) {
-      return false;
-    }
-    await this.inventory.equip(cobblestone, "hand");
-    await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
-    const landing = {
-      x: position.x,
-      y: position.y + 1,
-      z: position.z
-    };
-    await this.enterStairLanding(landing);
-    console.log(
-      `[prospect] Built staircase landing at ` +
-        `${position.x}, ${position.y}, ${position.z}`
-    );
-    return true;
   }
 
   private async enterStairLanding(position: Position): Promise<void> {
@@ -1919,8 +1838,8 @@ export class ProjectExecutor {
           distanceBetween(this.bot.entity.position, target) > 16
         ) {
           const previousLocation = relativeKey(placement);
-          const placed = await this.placeCarriedUtilityBlock("furnace");
-          if (placed) {
+          const placed = await this.building.placeNearby("furnace");
+          if (placed.status !== "blocked") {
             placement.dx = placed.position.x - project.anchor.x;
             placement.dy = placed.position.y - project.anchor.y;
             placement.dz = placed.position.z - project.anchor.z;
@@ -1946,7 +1865,8 @@ export class ProjectExecutor {
             return;
           }
         }
-        await this.placeOne(project.anchor, placement);
+        const result = await this.building.placeAt(project.anchor, placement);
+        if (result.status === "blocked") throw new Error(result.detail);
         state.completed.push(index);
         delete state.failures[String(index)];
         this.memory.saveProject(project);
@@ -1965,109 +1885,6 @@ export class ProjectExecutor {
       return;
     }
     this.finishStep(project, `Placed ${spec.placements.length} planned blocks`);
-  }
-
-  private async placeCarriedUtilityBlock(itemName: string) {
-    const item = this.inventory
-      .items()
-      .find((candidate) => candidate.name === itemName);
-    if (!item) return undefined;
-    const origin = this.bot.entity.position.floored();
-    for (const dy of [0, 1, -1]) {
-      for (let distance = 1; distance <= 3; distance += 1) {
-        for (let dx = -distance; dx <= distance; dx += 1) {
-          const dz = distance - Math.abs(dx);
-          for (const signedZ of dz === 0 ? [0] : [dz, -dz]) {
-            const target = origin.offset(dx, dy, signedZ);
-            const body = this.bot.blockAt(target);
-            const floor = this.bot.blockAt(target.offset(0, -1, 0));
-            if (
-              !body ||
-              !isReplaceableBlockName(body.name) ||
-              !floor ||
-              !isSolid(floor.name, floor.boundingBox)
-            ) {
-              continue;
-            }
-            try {
-              await this.inventory.equip(item, "hand");
-              await this.bot.placeBlock(floor, new Vec3(0, 1, 0));
-            } catch {
-              continue;
-            }
-            const placed = this.bot.blockAt(target);
-            if (placed?.name === itemName) return placed;
-          }
-        }
-      }
-    }
-    return undefined;
-  }
-
-  private async placeOne(
-    anchor: Position,
-    placement: BlueprintPlacement
-  ): Promise<void> {
-    const target = absolutePosition(anchor, placement);
-    const targetVector = new Vec3(target.x, target.y, target.z);
-    let existing = this.bot.blockAt(targetVector);
-    if (existing && !isReplaceableBlockName(existing.name)) {
-      throw new Error(`target contains ${existing.name}`);
-    }
-    if (existing && existing.name !== "air") {
-      const clearing = await this.mining.mineBlock({
-        position: target,
-        approach: false,
-        collectAfter: false
-      });
-      if (clearing.status === "blocked") throw new Error(clearing.detail);
-      existing = this.bot.blockAt(targetVector);
-    }
-
-    if (this.bot.entity.position.floored().equals(targetVector)) {
-      await this.movement.goNear(
-        { x: anchor.x - 2, y: anchor.y, z: anchor.z - 2 },
-        1
-      );
-    }
-
-    const references = [
-      { offset: new Vec3(0, -1, 0), face: new Vec3(0, 1, 0) },
-      { offset: new Vec3(-1, 0, 0), face: new Vec3(1, 0, 0) },
-      { offset: new Vec3(1, 0, 0), face: new Vec3(-1, 0, 0) },
-      { offset: new Vec3(0, 0, -1), face: new Vec3(0, 0, 1) },
-      { offset: new Vec3(0, 0, 1), face: new Vec3(0, 0, -1) },
-      { offset: new Vec3(0, 1, 0), face: new Vec3(0, -1, 0) }
-    ];
-    const reference = references
-      .map((candidate) => ({
-        ...candidate,
-        block: this.bot.blockAt(targetVector.plus(candidate.offset))
-      }))
-      .find((candidate) =>
-        isSolid(candidate.block?.name, candidate.block?.boundingBox)
-      );
-    if (!reference?.block) throw new Error("no adjacent support block");
-
-    await this.movement.goNear(
-      { x: target.x, y: Math.min(target.y, anchor.y), z: target.z },
-      3
-    );
-    const item = this.inventory
-      .items()
-      .find((candidate) => candidate.name === placement.itemName);
-    if (!item) throw new Error(`${placement.itemName} is missing`);
-    await this.inventory.equip(item, "hand");
-    await this.movement.face(targetVector.offset(0.5, 0.5, 0.5));
-    await this.bot.placeBlock(reference.block, reference.face);
-    if (isStorageBlock(placement.itemName)) {
-      this.memory.registerOwnedContainer(
-        target,
-        String(this.bot.game?.dimension),
-        placement.itemName,
-        `${placement.itemName.replaceAll("_", " ")} for ${this.memory.activeProject()?.title ?? "project"}`
-      );
-    }
   }
 
   private async executeVerification(
@@ -2213,10 +2030,6 @@ export class ProjectExecutor {
     this.lastState = key;
     console.log(message);
   }
-}
-
-function isStorageBlock(name: string): boolean {
-  return name === "chest" || name === "trapped_chest" || name === "barrel";
 }
 
 export function foodAnimalPriority(name: string): number {
