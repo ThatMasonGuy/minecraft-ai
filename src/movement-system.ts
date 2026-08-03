@@ -15,6 +15,9 @@ const { GoalBlock, GoalFollow, GoalLookAtBlock, GoalNear, GoalNearXZ, GoalXZ } =
 const ESCAPE_RADII = [4, 6, 8, 10, 12];
 const ESCAPE_DIRECTIONS = 16;
 const ESCAPE_REPLAN_MS = 500;
+const ESCAPE_STALL_MS = 1_500;
+const ESCAPE_PROGRESS_DISTANCE = 0.75;
+const ESCAPE_REJECT_MS = 5_000;
 const HAZARDOUS_FEET_BLOCKS = new Set([
   "cactus",
   "campfire",
@@ -108,6 +111,9 @@ export class PathfinderMovementSystem implements MovementSystem {
   private mode: "idle" | "follow" | "approach" | "escape" = "idle";
   private targetKey?: string;
   private lastEscapePlanAt = 0;
+  private lastEscapeProgressAt = 0;
+  private lastEscapePosition?: Position;
+  private readonly rejectedEscapeTargets = new Map<string, number>();
   private traversalPlacement?: TraversalPlacement;
 
   constructor(
@@ -374,6 +380,7 @@ export class PathfinderMovementSystem implements MovementSystem {
     this.bot.clearControlStates();
     this.mode = "idle";
     this.targetKey = undefined;
+    this.resetEscapeTracking();
   }
 
   escape(request: EscapeRequest): EscapeResult {
@@ -388,6 +395,7 @@ export class PathfinderMovementSystem implements MovementSystem {
     }
 
     const now = Date.now();
+    this.updateEscapeProgress(current, now);
     if (
       this.mode === "escape" &&
       this.targetKey &&
@@ -400,7 +408,9 @@ export class PathfinderMovementSystem implements MovementSystem {
     const destination = selectEscapeDestination(
       current,
       request.dangers,
-      (candidate) => this.isSafeDestination(candidate)
+      (candidate) =>
+        !this.isRejectedEscapeTarget(candidate, now) &&
+        this.isSafeDestination(candidate)
     );
     if (!destination) {
       this.hold();
@@ -417,6 +427,51 @@ export class PathfinderMovementSystem implements MovementSystem {
     this.targetKey = positionKey(destination);
     this.lastEscapePlanAt = now;
     return { status: "moving", destination };
+  }
+
+  private updateEscapeProgress(
+    current: Pick<Position, "x" | "y" | "z">,
+    now: number
+  ): void {
+    for (const [key, expiresAt] of this.rejectedEscapeTargets) {
+      if (expiresAt <= now) this.rejectedEscapeTargets.delete(key);
+    }
+    const position = toPosition(current);
+    if (this.mode !== "escape" || !this.lastEscapePosition) {
+      this.lastEscapePosition = position;
+      this.lastEscapeProgressAt = now;
+      return;
+    }
+    if (distance(position, this.lastEscapePosition) >= ESCAPE_PROGRESS_DISTANCE) {
+      this.lastEscapePosition = position;
+      this.lastEscapeProgressAt = now;
+      return;
+    }
+    if (
+      this.targetKey &&
+      now - this.lastEscapeProgressAt >= ESCAPE_STALL_MS
+    ) {
+      this.rejectedEscapeTargets.set(
+        this.targetKey,
+        now + ESCAPE_REJECT_MS
+      );
+      this.bot.pathfinder.setGoal(null);
+      this.targetKey = undefined;
+      this.lastEscapePlanAt = 0;
+      this.lastEscapePosition = position;
+      this.lastEscapeProgressAt = now;
+    }
+  }
+
+  private isRejectedEscapeTarget(position: Position, now: number): boolean {
+    return (this.rejectedEscapeTargets.get(positionKey(position)) ?? 0) > now;
+  }
+
+  private resetEscapeTracking(): void {
+    this.lastEscapePlanAt = 0;
+    this.lastEscapeProgressAt = 0;
+    this.lastEscapePosition = undefined;
+    this.rejectedEscapeTargets.clear();
   }
 
   private async withTimeout(operation: Promise<unknown>, timeoutMs: number): Promise<void> {

@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { selectEscapeDestination } from "../src/movement-system.js";
+import { describe, expect, it, vi } from "vitest";
+import { Vec3 } from "vec3";
+import {
+  PathfinderMovementSystem,
+  selectEscapeDestination
+} from "../src/movement-system.js";
 
 describe("movement escape routing", () => {
   it("selects a passable destination that increases separation", () => {
@@ -37,5 +41,43 @@ describe("movement escape routing", () => {
         () => false
       )
     ).toBeUndefined();
+  });
+
+  it("abandons an escape destination that makes no positional progress", () => {
+    vi.useFakeTimers();
+    try {
+      const setGoal = vi.fn();
+      const bot = {
+        entity: { position: new Vec3(0, 64, 0) },
+        pathfinder: { setGoal },
+        clearControlStates: vi.fn()
+      };
+      const sensing = {
+        blockAt: (position: { y: number }) => ({
+          name: position.y === 63 ? "stone" : "air",
+          boundingBox: position.y === 63 ? "block" : "empty"
+        })
+      };
+      const movement = new PathfinderMovementSystem(
+        bot as never,
+        {} as never,
+        sensing as never
+      );
+      const request = {
+        dangers: [{ position: { x: 2, y: 64, z: 0 } }],
+        safeDistance: 24
+      };
+
+      const first = movement.escape(request);
+      expect(first.status).toBe("moving");
+      vi.advanceTimersByTime(1_501);
+      const second = movement.escape(request);
+
+      expect(second.status).toBe("moving");
+      expect(second).not.toEqual(first);
+      expect(setGoal).toHaveBeenCalledWith(null);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
