@@ -1,5 +1,4 @@
 import type { Bot } from "mineflayer";
-import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
@@ -10,10 +9,10 @@ import type {
   ProjectPlan,
   ProjectStep
 } from "./types.js";
-import { isDroppedItemEntity } from "./entity-classification.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
 import type { InventorySystem } from "./inventory-system.js";
+import type { LootingSystem } from "./looting-system.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -39,7 +38,6 @@ const LOW_VALUE_RECOVERY_ITEMS = new Set([
 export class RecoveryExecutor {
   private timer?: NodeJS.Timeout;
   private running = false;
-  private noItemsSince?: number;
   private lastGoalAt = 0;
   private lastWaypointKey?: string;
   private trackedJobId?: number;
@@ -54,6 +52,7 @@ export class RecoveryExecutor {
     private readonly movement: MovementSystem,
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
+    private readonly looting: LootingSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -167,7 +166,6 @@ export class RecoveryExecutor {
           );
           return;
         }
-        this.noItemsSince = undefined;
         this.report(
           "working",
           "Recovering dropped inventory",
@@ -220,30 +218,22 @@ export class RecoveryExecutor {
         return;
       }
 
-      const item = nearestDroppedItem(
-        this.sensing.visibleEntitiesRaw(SEARCH_RADIUS),
-        this.bot.entity.position,
-        job.position
-      );
-      if (item) {
-        this.noItemsSince = undefined;
-        const dropped = safeDroppedItem(item);
+      const loot = this.looting.collectStep({
+        sessionId: `recovery:${job.id}`,
+        origin: job.position,
+        radius: SEARCH_RADIUS,
+        clearConfirmationMs: CLEAR_CONFIRMATION_MS
+      });
+      if (loot.status === "moving") {
         this.report(
           "working",
           "Collecting recovered items",
-          dropped?.displayName ?? dropped?.name ?? "Dropped item"
+          loot.displayName ?? loot.itemName ?? "Dropped item"
         );
-        if (Date.now() - this.lastGoalAt >= 400) {
-          this.lastGoalAt = Date.now();
-          this.lastWaypointKey = `item:${item.id}`;
-          this.movement.approach(item.position, 0);
-        }
         return;
       }
-
-      this.noItemsSince ??= Date.now();
       this.report("waiting", "Checking death site", "Confirming all visible drops are collected");
-      if (Date.now() - this.noItemsSince >= CLEAR_CONFIRMATION_MS) {
+      if (loot.status === "clear") {
         this.finish(job.id, "completed", "Reached the death site and collected all visible drops");
       }
     } finally {
@@ -458,6 +448,7 @@ export class RecoveryExecutor {
     reason: string
   ): void {
     this.movement.hold();
+    this.looting.endSession(`recovery:${id}`);
     this.memory.updateRecoveryJobStatus(id, status, reason);
     if (!this.memory.activeRecoveryJob()) {
       const project =
@@ -501,7 +492,6 @@ export class RecoveryExecutor {
       dimension: String(this.bot.game?.dimension),
       importance: status === "expired" ? 9 : 8
     });
-    this.noItemsSince = undefined;
     this.lastWaypointKey = undefined;
     this.closestDistance = undefined;
     this.lastProgressAt = undefined;
@@ -647,31 +637,6 @@ export function rewindProjectForInventoryLoss(
   project.status = "active";
   project.statusReason = undefined;
   return true;
-}
-
-function nearestDroppedItem(
-  entities: Entity[],
-  currentPosition: Position,
-  deathPosition: { x: number; y: number; z: number }
-): Entity | undefined {
-  return entities
-    .filter(isDroppedItemEntity)
-    .filter((entity) => distanceBetween(entity.position, deathPosition) <= SEARCH_RADIUS)
-    .sort(
-      (a, b) =>
-        distanceBetween(currentPosition, a.position) -
-        distanceBetween(currentPosition, b.position)
-    )[0];
-}
-
-function safeDroppedItem(
-  entity: Entity
-): ReturnType<Entity["getDroppedItem"]> {
-  try {
-    return entity.getDroppedItem();
-  } catch {
-    return null;
-  }
 }
 
 function distanceBetween(

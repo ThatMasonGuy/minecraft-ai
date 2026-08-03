@@ -173,7 +173,8 @@ describe("player aggression escape", () => {
       memory as never,
       movement,
       sensing as never,
-      inventory as never
+      inventory as never,
+      { collectStep: vi.fn(), endSession: vi.fn() } as never
     );
     combat.start();
 
@@ -260,7 +261,8 @@ describe("enclosed combat movement", () => {
         heldItem: () => weapon,
         equipment: () => undefined,
         equip: vi.fn(async () => true)
-      } as never
+      } as never,
+      { collectStep: vi.fn(), endSession: vi.fn() } as never
     );
     combat.start();
 

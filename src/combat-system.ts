@@ -4,8 +4,6 @@ import type { Entity } from "prismarine-entity";
 import type { ExecutionScope } from "./execution-coordinator.js";
 import {
   displayEntityName,
-  droppedItem,
-  isDroppedItemEntity,
   isPlayerEntity,
   isRecognizedHostile,
   normalizedEntityName
@@ -18,6 +16,7 @@ import type {
 import type { ActivityUpdate, Position } from "./types.js";
 import type { SensingSystem } from "./perception.js";
 import type { InventorySystem } from "./inventory-system.js";
+import type { LootingSystem } from "./looting-system.js";
 
 const ATTACK_RANGE = 3.15;
 const FOLLOW_RANGE = 2.7;
@@ -33,6 +32,7 @@ const RECOVERY_TIMEOUT_MS = 12_000;
 const POST_ESCAPE_SUPPRESSION_MS = 5_000;
 const LOOT_COLLECTION_MS = 8_000;
 const LOOT_SEARCH_RADIUS = 8;
+const COMBAT_LOOT_SESSION = "combat";
 
 const ALWAYS_ESCAPE = new Set([
   "blaze",
@@ -119,8 +119,6 @@ export class CombatSystem {
   private playerHits = new Map<string, PlayerHitRecord>();
   private lootUntil = 0;
   private lootOrigin?: Entity["position"];
-  private collectingItemId?: number;
-  private noLootSince?: number;
 
   constructor(
     private readonly bot: Bot,
@@ -128,6 +126,7 @@ export class CombatSystem {
     private readonly movement: CombatMovementSystem,
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
+    private readonly looting: LootingSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly execution?: ExecutionScope
   ) {}
@@ -137,7 +136,6 @@ export class CombatSystem {
     this.bot.on("entityHurt", this.scopedEntityHurt);
     this.bot.on("entityDead", this.scopedEntityDead);
     this.bot.on("entityGone", this.scopedEntityGone);
-    this.bot.on("playerCollect", this.scopedPlayerCollect);
     this.bot.on("death", this.scopedDeath);
   }
 
@@ -146,7 +144,6 @@ export class CombatSystem {
     this.bot.removeListener("entityHurt", this.scopedEntityHurt);
     this.bot.removeListener("entityDead", this.scopedEntityDead);
     this.bot.removeListener("entityGone", this.scopedEntityGone);
-    this.bot.removeListener("playerCollect", this.scopedPlayerCollect);
     this.bot.removeListener("death", this.scopedDeath);
     const cleanup = () => this.resetToIdle("Combat system stopped", false);
     if (this.execution) this.execution.runSync(cleanup);
@@ -179,13 +176,6 @@ export class CombatSystem {
 
   private readonly scopedEntityGone = (entity: Entity): void => {
     this.runOwnedSync(() => this.onEntityGone(entity));
-  };
-
-  private readonly scopedPlayerCollect = (
-    collector: Entity,
-    collected: Entity
-  ): void => {
-    this.runOwnedSync(() => this.onPlayerCollect(collector, collected));
   };
 
   private readonly scopedDeath = (): void => {
@@ -409,34 +399,21 @@ export class CombatSystem {
       this.finishLooting();
       return;
     }
-    const origin = this.bot.entity.position;
-    const itemEntity = this.sensing
-      .visibleEntitiesRaw(LOOT_SEARCH_RADIUS)
-      .filter(isDroppedItemEntity)
-      .filter(
-        (entity) =>
-          this.lootOrigin!.distanceTo(entity.position) <= LOOT_SEARCH_RADIUS &&
-          origin.distanceTo(entity.position) <= LOOT_SEARCH_RADIUS
-      )
-      .sort(
-        (a, b) =>
-          origin.distanceTo(a.position) - origin.distanceTo(b.position)
-      )[0];
-
-    if (!itemEntity) {
-      this.noLootSince ??= Date.now();
-      if (Date.now() - this.noLootSince >= 1_500) this.finishLooting();
+    const result = this.looting.collectStep({
+      sessionId: COMBAT_LOOT_SESSION,
+      origin: toPosition(this.lootOrigin),
+      radius: LOOT_SEARCH_RADIUS
+    });
+    if (result.status === "clear") {
+      this.finishLooting();
       return;
     }
-    this.noLootSince = undefined;
-    this.collectingItemId = itemEntity.id;
-    const item = droppedItem(itemEntity);
+    if (result.status !== "moving") return;
     this.onActivity?.({
       phase: "acting",
       label: "Collecting combat drops",
-      detail: item?.displayName ?? item?.name ?? "Nearby drops"
+      detail: result.displayName ?? result.itemName ?? "Nearby drops"
     });
-    this.movement.approach(toPosition(itemEntity.position), 0);
   }
 
   private onEntityHurt(
@@ -540,23 +517,6 @@ export class CombatSystem {
     if (entity.id === this.playerAggressor?.id) {
       this.playerAggressor = undefined;
     }
-    if (entity.id === this.collectingItemId) {
-      this.collectingItemId = undefined;
-    }
-  }
-
-  private onPlayerCollect(collector: Entity, collected: Entity): void {
-    if (collector.id !== this.bot.entity.id) return;
-    const item = droppedItem(collected);
-    if (!item) return;
-    this.memory.record({
-      kind: "loot",
-      summary: `Collected dropped ${item.name}`,
-      payload: { itemName: item.name, count: item.count },
-      position: toPosition(this.bot.entity.position),
-      dimension: String(this.bot.game.dimension ?? "unknown"),
-      importance: 5
-    });
   }
 
   private beginMobEncounter(target: Entity, trigger: string): void {
@@ -767,15 +727,13 @@ export class CombatSystem {
     this.mode = "looting";
     this.lootOrigin = this.bot.entity.position.clone();
     this.lootUntil = Date.now() + LOOT_COLLECTION_MS;
-    this.collectingItemId = undefined;
-    this.noLootSince = undefined;
+    this.looting.endSession(COMBAT_LOOT_SESSION);
   }
 
   private finishLooting(): void {
     this.lootUntil = 0;
     this.lootOrigin = undefined;
-    this.collectingItemId = undefined;
-    this.noLootSince = undefined;
+    this.looting.endSession(COMBAT_LOOT_SESSION);
     this.resetToIdle("Post-combat area is clear");
   }
 

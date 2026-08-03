@@ -12,6 +12,7 @@ import {
   MineflayerInventorySystem,
   type InventorySystem
 } from "./inventory-system.js";
+import { MineflayerLootingSystem, type LootingSystem } from "./looting-system.js";
 import type { EpisodicMemory } from "./memory.js";
 import { PathfinderMovementSystem } from "./movement-system.js";
 import { Perception } from "./perception.js";
@@ -43,6 +44,7 @@ export class MinecraftRuntime {
   private bot?: Bot;
   private agent?: AutonomousAgent;
   private combatSystem?: CombatSystem;
+  private lootingSystem?: LootingSystem;
   private workExecutor?: WorkExecutor;
   private projectExecutor?: ProjectExecutor;
   private recoveryExecutor?: RecoveryExecutor;
@@ -68,6 +70,7 @@ export class MinecraftRuntime {
     this.stopping = true;
     this.agent?.stop();
     this.combatSystem?.stop();
+    this.lootingSystem?.stop();
     this.workExecutor?.stop();
     this.projectExecutor?.stop();
     this.recoveryExecutor?.stop();
@@ -121,6 +124,14 @@ export class MinecraftRuntime {
         config.perceptionDistance,
         inventorySystem
       );
+      const lootingSystem = new MineflayerLootingSystem(
+        bot,
+        this.memory,
+        perception,
+        movementSystem
+      );
+      this.lootingSystem = lootingSystem;
+      lootingSystem.start();
       const executionCoordinator = new ExecutionCoordinator(bot);
       this.executionCoordinator = executionCoordinator;
       bot.autoEat.setOpts({
@@ -150,6 +161,7 @@ export class MinecraftRuntime {
         movementSystem,
         perception,
         inventorySystem,
+        lootingSystem,
         (activity) => this.viewerStatus.setCombat(activity),
         executionCoordinator.scope(
           "combat",
@@ -190,6 +202,7 @@ export class MinecraftRuntime {
         movementSystem,
         perception,
         inventorySystem,
+        lootingSystem,
         (activity) => this.viewerStatus.setWork(activity),
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
