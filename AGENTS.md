@@ -17,6 +17,18 @@ The planner may define outcomes, priorities, constraints, minimum success condit
 - When a broad outcome is unsupported, preserve it as a measurable goal and implement the reusable deterministic compiler or executor. Never temporarily bridge the gap with model-authored coordinates or step-by-step instructions.
 - When reviewing a new planner tool, reject any schema that exposes world coordinates, block faces, inventory slots, or an ordered list of motor actions unless the user explicitly changes this architectural rule.
 
+## Enclosed subsystem boundaries
+
+Treat combat, movement, building, mining, crafting, storage, recovery, perception, planning, and memory as enclosed systems with explicit public interfaces.
+
+- A subsystem owns its policy, state machine, retries, verification, telemetry, and implementation details. Callers request an outcome through its public interface; they must not reproduce or reach into its internal steps.
+- Shared capabilities belong to the subsystem that conceptually owns them. Combat may request `follow`, `hold`, or `escape` from movement, but must not calculate routes, construct Pathfinder goals, or maintain a second evasion implementation.
+- Improvements to a shared subsystem must flow automatically to every caller. Do not copy movement, block-selection, placement, mining, inventory, or retry algorithms into consumers for local convenience.
+- Cross-system dependencies must point one way through narrow interfaces and domain-shaped results. Avoid importing another subsystem's private helpers, state, concrete executor class, or transport-specific primitives.
+- Runtime wiring may compose systems and arbitrate ownership, but it must not contain subsystem behavior. Planner and operator surfaces may start or query a system; they must not orchestrate its motor sequence.
+- Tests should exercise each subsystem through its public contract with fakes for adjacent systems. Keep end-to-end tests for integration boundaries rather than using them as the only way to validate internal behavior.
+- Before adding behavior, identify its owning subsystem. If ownership is ambiguous, define or repair the boundary before implementing the behavior.
+
 ## API cost attribution
 
 - Every new paid request must carry a stable turn ID, `initial` or `follow_up` request role, workload type, trigger source, optional task type/task ID, and bounded string tags.
