@@ -12,6 +12,7 @@ import type {
 } from "./types.js";
 import { isDroppedItemEntity } from "./entity-classification.js";
 import type { MovementSystem } from "./movement-system.js";
+import type { SensingSystem } from "./perception.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -50,6 +51,7 @@ export class RecoveryExecutor {
     private readonly memory: EpisodicMemory,
     private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
+    private readonly sensing: SensingSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -216,7 +218,11 @@ export class RecoveryExecutor {
         return;
       }
 
-      const item = nearestDroppedItem(this.bot, job.position);
+      const item = nearestDroppedItem(
+        this.sensing.visibleEntitiesRaw(SEARCH_RADIUS),
+        this.bot.entity.position,
+        job.position
+      );
       if (item) {
         this.noItemsSince = undefined;
         const dropped = safeDroppedItem(item);
@@ -642,16 +648,17 @@ export function rewindProjectForInventoryLoss(
 }
 
 function nearestDroppedItem(
-  bot: Bot,
+  entities: Entity[],
+  currentPosition: Position,
   deathPosition: { x: number; y: number; z: number }
 ): Entity | undefined {
-  return Object.values(bot.entities)
+  return entities
     .filter(isDroppedItemEntity)
     .filter((entity) => distanceBetween(entity.position, deathPosition) <= SEARCH_RADIUS)
     .sort(
       (a, b) =>
-        bot.entity.position.distanceTo(a.position) -
-        bot.entity.position.distanceTo(b.position)
+        distanceBetween(currentPosition, a.position) -
+        distanceBetween(currentPosition, b.position)
     )[0];
 }
 

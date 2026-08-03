@@ -109,6 +109,7 @@ export class MinecraftRuntime {
     bot.once("spawn", async () => {
       const movementSystem = new PathfinderMovementSystem(bot);
       movementSystem.configureBase();
+      const perception = new Perception(bot, config.perceptionDistance);
       const executionCoordinator = new ExecutionCoordinator(bot);
       this.executionCoordinator = executionCoordinator;
       bot.autoEat.setOpts({
@@ -136,6 +137,7 @@ export class MinecraftRuntime {
         bot,
         this.memory,
         movementSystem,
+        perception,
         (activity) => this.viewerStatus.setCombat(activity),
         executionCoordinator.scope(
           "combat",
@@ -160,7 +162,6 @@ export class MinecraftRuntime {
         detail: `Playing as ${bot.username}`
       });
 
-      const perception = new Perception(bot, config.perceptionDistance);
       const actions = new MinecraftActions(
         bot,
         this.memory,
@@ -173,6 +174,7 @@ export class MinecraftRuntime {
         this.memory,
         actions,
         movementSystem,
+        perception,
         (activity) => this.viewerStatus.setWork(activity),
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(

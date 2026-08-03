@@ -559,7 +559,7 @@ export class ProjectExecutor {
             this.bot.entity.position,
             table.position
           ) > 4.5 ||
-          !this.bot.canSeeBlock(table)
+          !this.perception.canSeeBlock(table)
         ) {
           throw new Error(
             "Pathfinder stopped without reaching interaction range"
@@ -1363,7 +1363,7 @@ export class ProjectExecutor {
     const snapshot = this.perception.observe();
     const visibleFoodTarget = snapshot.visibleEntities
       .filter((entity) => foodAnimalPriority(entity.name) > 0)
-      .map((visible) => this.bot.entities[visible.id])
+      .map((visible) => this.perception.entityById(visible.id))
       .filter(
         (entity): entity is Entity =>
           entity !== undefined &&
@@ -1378,7 +1378,7 @@ export class ProjectExecutor {
             this.bot.entity.position.distanceTo(b.position)
       )[0];
     const rememberedTarget = state.forageTargetId
-      ? this.bot.entities[state.forageTargetId]
+      ? this.perception.entityById(state.forageTargetId)
       : undefined;
     const target =
       rememberedTarget?.isValid
@@ -1521,7 +1521,7 @@ export class ProjectExecutor {
           `protected ${block.name} at ${position.x},${position.y},${position.z}`
         );
       }
-      if (!this.bot.canSeeBlock(block)) {
+      if (!this.perception.canSeeBlock(block)) {
         await this.movement.face(block.position.offset(0.5, 0.5, 0.5));
         block = this.bot.blockAt(position);
       }

@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Defined a shared sensing-system contract for perception snapshots, visible entity resolution, loaded block inspection, and line-of-sight checks; combat, recovery, projects, and deterministic actions no longer maintain separate entity-visibility queries.
 - Consolidated Pathfinder goals, route timeouts, exact-cell traversal, direct control, orientation, and escape routing behind the shared movement-system API; deterministic consumers no longer implement their own locomotion.
 - Replaced the coupled self-defence executor with an enclosed combat system that owns encounter policy, equipment, server-tick attack cadence, strike spacing, shields, recovery, loot, and encounter telemetry while delegating every route to the shared movement system.
 - Made player combat an unconditional safety boundary: players are never targeted, and a second hit from the same player within 30 seconds triggers a high-priority non-retaliatory escape.

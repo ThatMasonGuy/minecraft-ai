@@ -16,6 +16,7 @@ import type {
   MovementDanger
 } from "./movement-system.js";
 import type { ActivityUpdate, Position } from "./types.js";
+import type { SensingSystem } from "./perception.js";
 
 const ATTACK_RANGE = 3.15;
 const FOLLOW_RANGE = 2.7;
@@ -124,6 +125,7 @@ export class CombatSystem {
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
     private readonly movement: CombatMovementSystem,
+    private readonly sensing: SensingSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly execution?: ExecutionScope
   ) {}
@@ -406,14 +408,14 @@ export class CombatSystem {
       return;
     }
     const origin = this.bot.entity.position;
-    const itemEntity = Object.values(this.bot.entities)
+    const itemEntity = this.sensing
+      .visibleEntitiesRaw(LOOT_SEARCH_RADIUS)
       .filter(isDroppedItemEntity)
       .filter(
         (entity) =>
           this.lootOrigin!.distanceTo(entity.position) <= LOOT_SEARCH_RADIUS &&
           origin.distanceTo(entity.position) <= LOOT_SEARCH_RADIUS
       )
-      .filter((entity) => this.hasLineOfSight(entity))
       .sort(
         (a, b) =>
           origin.distanceTo(a.position) - origin.distanceTo(b.position)
@@ -735,8 +737,8 @@ export class CombatSystem {
 
   private visibleHostiles(): Entity[] {
     const origin = this.bot.entity.position;
-    return Object.values(this.bot.entities)
-      .filter((entity) => entity.id !== this.bot.entity.id)
+    return this.sensing
+      .visibleEntitiesRaw(MAX_PURSUIT_DISTANCE)
       .filter(isRecognizedHostile)
       .filter(
         (entity) =>
@@ -753,17 +755,7 @@ export class CombatSystem {
   }
 
   private hasLineOfSight(entity: Entity): boolean {
-    const origin = this.bot.entity.position.offset(0, this.bot.entity.height, 0);
-    const target = entity.position.offset(0, Math.max(0.5, entity.height / 2), 0);
-    const direction = target.minus(origin);
-    const distance = direction.norm();
-    if (distance === 0) return true;
-    const hit = this.bot.world.raycast(
-      origin,
-      direction.scaled(1 / distance),
-      distance
-    );
-    return hit === null || origin.distanceTo(hit.intersect) >= distance - 0.2;
+    return this.sensing.hasLineOfSight(entity);
   }
 
   private beginLooting(): void {

@@ -39,4 +39,31 @@ describe("enclosed subsystem boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("keeps raw entity visibility and raycasts in sensing adapters", () => {
+    const allowed = new Set([
+      path.join(SOURCE_ROOT, "perception.ts"),
+      path.join(SOURCE_ROOT, "viewer-server.ts")
+    ]);
+    const forbidden = [
+      /(?:this\.)?bot\.entities/,
+      /(?:this\.)?bot\.world\.raycast\s*\(/,
+      /(?:this\.)?bot\.canSeeBlock\s*\(/
+    ];
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            forbidden.some((pattern) => pattern.test(line))
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
 });

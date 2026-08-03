@@ -157,7 +157,16 @@ describe("player aggression escape", () => {
       }))
     };
     const memory = { record: vi.fn() };
-    const combat = new CombatSystem(bot as never, memory as never, movement);
+    const sensing = {
+      visibleEntitiesRaw: () => [player],
+      hasLineOfSight: () => true
+    };
+    const combat = new CombatSystem(
+      bot as never,
+      memory as never,
+      movement,
+      sensing as never
+    );
     combat.start();
 
     emitter.emit("entityHurt", botEntity, player);
@@ -232,7 +241,11 @@ describe("enclosed combat movement", () => {
     const combat = new CombatSystem(
       bot as never,
       { record: vi.fn() } as never,
-      movement
+      movement,
+      {
+        visibleEntitiesRaw: () => [zombie],
+        hasLineOfSight: () => true
+      } as never
     );
     combat.start();
 

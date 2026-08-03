@@ -495,12 +495,12 @@ export class MinecraftActions {
     for (let dx = -5; dx <= 5; dx += 1) {
       for (let dy = -2; dy <= 2; dy += 1) {
         for (let dz = -5; dz <= 5; dz += 1) {
-          const block = this.bot.blockAt(center.offset(dx, dy, dz));
+          const block = this.perception.blockAt(center.offset(dx, dy, dz));
           if (
             !block ||
             (!block.name.endsWith("_door") &&
               !block.name.endsWith("_fence_gate")) ||
-            !this.bot.canSeeBlock(block)
+            !this.perception.canSeeBlock(block)
           ) {
             continue;
           }
@@ -533,13 +533,13 @@ export class MinecraftActions {
       return fail("That block was not present in the latest line-of-sight observation");
     }
     const position = new Vec3(args.x, args.y, args.z);
-    let block = this.bot.blockAt(position);
-    if (!block || !this.bot.canSeeBlock(block) || !this.bot.canDigBlock(block)) {
+    let block = this.perception.blockAt(position);
+    if (!block || !this.perception.canSeeBlock(block) || !this.bot.canDigBlock(block)) {
       await this.movement.positionForBlock(args);
-      block = this.bot.blockAt(position);
+      block = this.perception.blockAt(position);
     }
     if (!block || block.name === "air") return fail("The observed block is no longer there");
-    if (!this.bot.canSeeBlock(block)) return fail("The block is no longer in line of sight");
+    if (!this.perception.canSeeBlock(block)) return fail("The block is no longer in line of sight");
     if (!this.bot.canDigBlock(block)) return fail(`Cannot dig ${block.name} from here`);
     const tool = this.bot.pathfinder.bestHarvestTool(block);
     if (tool) await this.bot.equip(tool, "hand");
@@ -599,8 +599,8 @@ export class MinecraftActions {
       y: args.reference_y,
       z: args.reference_z
     });
-    const reference = this.bot.blockAt(referencePosition);
-    if (!reference || !this.bot.canSeeBlock(reference)) {
+    const reference = this.perception.blockAt(referencePosition);
+    if (!reference || !this.perception.canSeeBlock(reference)) {
       return fail("The reference block is no longer visible");
     }
     await this.bot.equip(item, "hand");
@@ -658,9 +658,9 @@ export class MinecraftActions {
       (block) => block.name === "crafting_table" && block.distance <= 5
     );
     const table = tableObservation
-      ? this.bot.blockAt(
+      ? this.perception.blockAt(
           new Vec3(tableObservation.x, tableObservation.y, tableObservation.z)
-        )
+        ) ?? null
       : null;
     const recipes = this.bot.recipesFor(item.id, null, count, table);
     const recipe = recipes[0];
@@ -686,7 +686,7 @@ export class MinecraftActions {
       .parse(raw);
     const visible = this.perception.visibleEntity(entity_id);
     if (!visible) return fail("That entity is not in the latest visible-entity observation");
-    const entity = this.bot.entities[entity_id];
+    const entity = this.perception.entityById(entity_id);
     if (!entity) return fail("That entity is no longer present");
     if (
       [entity.name, entity.displayName].some(isRecognizedHostileName)
@@ -705,10 +705,10 @@ export class MinecraftActions {
       return fail("That bed is not in the latest line-of-sight observation");
     }
     const position = new Vec3(args.x, args.y, args.z);
-    const bed = this.bot.blockAt(position);
+    const bed = this.perception.blockAt(position);
     if (!bed || !bed.name.includes("bed")) return fail("The observed block is not a bed");
     await this.movement.goNear(args, 2, 30_000);
-    if (!this.bot.canSeeBlock(bed)) return fail("The bed is no longer visible");
+    if (!this.perception.canSeeBlock(bed)) return fail("The bed is no longer visible");
     await this.bot.sleep(bed);
     return ok(`Sleeping in ${bed.name}`);
   }
@@ -733,8 +733,8 @@ export class MinecraftActions {
 
     const position = new Vec3(args.x, args.y, args.z);
     await this.movement.positionForBlock(args);
-    const block = this.bot.blockAt(position);
-    if (!block || !isStorageBlock(block.name) || !this.bot.canSeeBlock(block)) {
+    const block = this.perception.blockAt(position);
+    if (!block || !isStorageBlock(block.name) || !this.perception.canSeeBlock(block)) {
       return fail("The storage container is no longer visible");
     }
 
@@ -780,8 +780,8 @@ export class MinecraftActions {
     if (!owned) return fail("That container is not registered as owned");
     const position = new Vec3(args.x, args.y, args.z);
     await this.movement.positionForBlock(args);
-    const block = this.bot.blockAt(position);
-    if (!block || !isStorageBlock(block.name) || !this.bot.canSeeBlock(block)) {
+    const block = this.perception.blockAt(position);
+    if (!block || !isStorageBlock(block.name) || !this.perception.canSeeBlock(block)) {
       return fail("The owned storage container is unavailable");
     }
     const container = await this.bot.openContainer(block);

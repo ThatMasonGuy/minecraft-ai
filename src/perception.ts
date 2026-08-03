@@ -1,13 +1,33 @@
 import type { Bot } from "mineflayer";
+import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type {
   InventoryEntry,
   PerceptionSnapshot,
+  Position,
   VisibleBlock,
   VisibleEntity
 } from "./types.js";
 
-export class Perception {
+export type SensedBlock = NonNullable<ReturnType<Bot["blockAt"]>>;
+
+export interface SensingSystem {
+  observe(): PerceptionSnapshot;
+  last(): PerceptionSnapshot | undefined;
+  isBlockCurrentlyVisible(x: number, y: number, z: number): boolean;
+  visibleEntity(id: number): VisibleEntity | undefined;
+  inspectVisibleBlock(x: number, y: number, z: number): VisibleBlock | undefined;
+  blockAt(
+    position: Pick<Position, "x" | "y" | "z">,
+    visibility?: "loaded" | "visible"
+  ): SensedBlock | undefined;
+  canSeeBlock(block: SensedBlock): boolean;
+  visibleEntitiesRaw(maxDistance?: number): Entity[];
+  entityById(id: number): Entity | undefined;
+  hasLineOfSight(entity: Entity): boolean;
+}
+
+export class MineflayerSensingSystem implements SensingSystem {
   private lastSnapshot?: PerceptionSnapshot;
 
   constructor(
@@ -54,6 +74,23 @@ export class Perception {
     return this.lastSnapshot?.visibleEntities.find((entity) => entity.id === id);
   }
 
+  visibleEntitiesRaw(maxDistance = this.maxDistance): Entity[] {
+    if (!this.bot.entity) return [];
+    const origin = this.bot.entity.position;
+    return Object.values(this.bot.entities)
+      .filter((entity) => entity.id !== this.bot.entity.id)
+      .filter((entity) => origin.distanceTo(entity.position) <= maxDistance)
+      .filter((entity) => this.hasLineOfSight(entity));
+  }
+
+  entityById(id: number): Entity | undefined {
+    return this.visibleEntitiesRaw().find((entity) => entity.id === id);
+  }
+
+  hasLineOfSight(entity: Entity): boolean {
+    return this.hasLineOfSightToEntity(entity);
+  }
+
   inspectVisibleBlock(x: number, y: number, z: number): VisibleBlock | undefined {
     const position = new Vec3(x, y, z);
     const origin = this.bot.entity.position.offset(0, this.bot.entity.height, 0);
@@ -83,6 +120,20 @@ export class Perception {
       ].sort((a, b) => a.distance - b.distance);
     }
     return visible;
+  }
+
+  blockAt(
+    position: Pick<Position, "x" | "y" | "z">,
+    visibility: "loaded" | "visible" = "loaded"
+  ): SensedBlock | undefined {
+    const block = this.bot.blockAt(new Vec3(position.x, position.y, position.z));
+    if (!block) return undefined;
+    if (visibility === "visible" && !this.bot.canSeeBlock(block)) return undefined;
+    return block;
+  }
+
+  canSeeBlock(block: SensedBlock): boolean {
+    return this.bot.canSeeBlock(block);
   }
 
   private sampleVisibleBlocks(): VisibleBlock[] {
@@ -149,6 +200,8 @@ export class Perception {
     return hit === null || origin.distanceTo(hit.intersect) >= distance - 0.2;
   }
 }
+
+export { MineflayerSensingSystem as Perception };
 
 export function resolveRaycastBlock(
   bot: Pick<Bot, "blockAt">,
