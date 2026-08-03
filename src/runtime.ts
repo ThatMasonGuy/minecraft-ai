@@ -32,6 +32,7 @@ import {
   shouldRecoverInventory
 } from "./recovery-executor.js";
 import { MineflayerStorageSystem, type StorageSystem } from "./storage-system.js";
+import { MineflayerSurvivalSystem, type SurvivalSystem } from "./survival-system.js";
 import { startViewerServer, type ViewerServer } from "./viewer-server.js";
 import { ViewerStatusStore } from "./viewer-status.js";
 import { WorkExecutor } from "./work-executor.js";
@@ -52,13 +53,13 @@ export class MinecraftRuntime {
   private projectExecutor?: ProjectExecutor;
   private recoveryExecutor?: RecoveryExecutor;
   private storageSystem?: StorageSystem;
+  private survivalSystem?: SurvivalSystem;
   private executionCoordinator?: ExecutionCoordinator;
   private inventorySystem?: InventorySystem;
   private reconnectTimer?: NodeJS.Timeout;
   private viewer?: ViewerServer;
   private operator?: OperatorServer;
   private stopping = false;
-  private vitalsDangerous = false;
   private lastLivingInventory: Array<{ name: string; count: number }> = [];
   private readonly viewerStatus = new ViewerStatusStore();
 
@@ -78,6 +79,7 @@ export class MinecraftRuntime {
     this.projectExecutor?.stop();
     this.recoveryExecutor?.stop();
     this.storageSystem?.stop();
+    this.survivalSystem?.stop();
     this.executionCoordinator?.dispose();
     this.executionCoordinator = undefined;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -91,7 +93,6 @@ export class MinecraftRuntime {
 
   private connect(): void {
     if (this.stopping) return;
-    this.vitalsDangerous = false;
     console.log(
       `[runtime] Connecting ${config.minecraft.username} to ${config.minecraft.host}:${config.minecraft.port}`
     );
@@ -147,6 +148,28 @@ export class MinecraftRuntime {
         movementSystem,
         inventorySystem
       );
+      const survivalSystem = new MineflayerSurvivalSystem(
+        bot,
+        this.memory,
+        perception,
+        movementSystem,
+        inventorySystem,
+        {
+          onDanger: () =>
+            this.agent?.wakeAutomatically("survival status became dangerous", {
+              workloadType: "survival",
+              triggerSource: "vitals",
+              taskType: "danger_vitals"
+            }),
+          onVitals: (snapshot) => {
+            const livingInventory = aggregateInventory(inventorySystem);
+            if (snapshot.health > 0 && livingInventory.length > 0) {
+              this.lastLivingInventory = livingInventory;
+            }
+          }
+        }
+      );
+      this.survivalSystem = survivalSystem;
       movementSystem.setTraversalPlacement(buildingSystem);
       const lootingSystem = new MineflayerLootingSystem(
         bot,
@@ -158,27 +181,7 @@ export class MinecraftRuntime {
       lootingSystem.start();
       const executionCoordinator = new ExecutionCoordinator(bot);
       this.executionCoordinator = executionCoordinator;
-      bot.autoEat.setOpts({
-        minHunger: 16,
-        minHealth: 14,
-        priority: "saturation",
-        returnToLastItem: true,
-        offhand: false,
-        bannedFood: [
-          "chorus_fruit",
-          "poisonous_potato",
-          "pufferfish",
-          "spider_eye"
-        ]
-      });
-      bot.autoEat.enableAuto();
-      const armoredBot = bot as Bot & {
-        armorManager: { equipAll: () => Promise<void> };
-      };
-      void armoredBot.armorManager.equipAll().catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[survival] Armour manager failed: ${message}`);
-      });
+      survivalSystem.start();
       this.combatSystem = new CombatSystem(
         bot,
         this.memory,
@@ -186,6 +189,7 @@ export class MinecraftRuntime {
         perception,
         inventorySystem,
         lootingSystem,
+        survivalSystem,
         (activity) => this.viewerStatus.setCombat(activity),
         executionCoordinator.scope(
           "combat",
@@ -237,6 +241,7 @@ export class MinecraftRuntime {
         buildingSystem,
         productionSystem,
         storageSystem,
+        survivalSystem,
         config.maxMoveDistance
       );
       this.recoveryExecutor = new RecoveryExecutor(
@@ -344,6 +349,7 @@ export class MinecraftRuntime {
         buildingSystem,
         productionSystem,
         storageSystem,
+        survivalSystem,
         config.workExecutorTickMs,
         (activity) => {
           if (
@@ -469,32 +475,6 @@ export class MinecraftRuntime {
         taskType: "conversation",
         tags: { player: username }
       });
-    });
-
-    bot.on("health", () => {
-      const livingInventory = this.inventorySystem
-        ? aggregateInventory(this.inventorySystem)
-        : [];
-      if (bot.health > 0 && livingInventory.length > 0) {
-        this.lastLivingInventory = livingInventory;
-      }
-      this.memory.record({
-        kind: "vitals",
-        summary: `Health ${bot.health}, food ${bot.food}, oxygen ${bot.oxygenLevel}`,
-        payload: { health: bot.health, food: bot.food, oxygen: bot.oxygenLevel },
-        position: bot.entity ? toPosition(bot.entity.position) : undefined,
-        dimension: bot.game?.dimension ? String(bot.game.dimension) : undefined,
-        importance: bot.health <= 8 || bot.food <= 6 ? 9 : 4
-      });
-      const dangerous = bot.health <= 8 || bot.food <= 6;
-      if (dangerous && !this.vitalsDangerous) {
-        this.agent?.wakeAutomatically("survival status became dangerous", {
-          workloadType: "survival",
-          triggerSource: "vitals",
-          taskType: "danger_vitals"
-        });
-      }
-      this.vitalsDangerous = dangerous;
     });
 
     bot.on("death", () => {

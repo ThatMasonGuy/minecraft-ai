@@ -174,7 +174,19 @@ describe("player aggression escape", () => {
       movement,
       sensing as never,
       inventory as never,
-      { collectStep: vi.fn(), endSession: vi.fn() } as never
+      { collectStep: vi.fn(), endSession: vi.fn() } as never,
+      {
+        snapshot: () => ({
+          health: 20,
+          food: 20,
+          oxygen: 20,
+          dangerous: false,
+          combatReady: true
+        }),
+        suspendAutoCare: vi.fn(),
+        resumeAutoCare: vi.fn(),
+        isEating: () => false
+      } as never
     );
     combat.start();
 
@@ -262,7 +274,19 @@ describe("enclosed combat movement", () => {
         equipment: () => undefined,
         equip: vi.fn(async () => true)
       } as never,
-      { collectStep: vi.fn(), endSession: vi.fn() } as never
+      { collectStep: vi.fn(), endSession: vi.fn() } as never,
+      {
+        snapshot: () => ({
+          health: 20,
+          food: 20,
+          oxygen: 20,
+          dangerous: false,
+          combatReady: true
+        }),
+        suspendAutoCare: vi.fn(),
+        resumeAutoCare: vi.fn(),
+        isEating: () => false
+      } as never
     );
     combat.start();
 

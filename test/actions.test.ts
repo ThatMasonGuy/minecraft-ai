@@ -12,6 +12,7 @@ import type { MiningSystem } from "../src/mining-system.js";
 import type { BuildingSystem } from "../src/building-system.js";
 import type { ProductionSystem } from "../src/production-system.js";
 import type { StorageSystem } from "../src/storage-system.js";
+import type { SurvivalSystem } from "../src/survival-system.js";
 
 describe("planner action boundary", () => {
   it("exposes only high-level outcome tools to the planner", () => {
@@ -25,6 +26,7 @@ describe("planner action boundary", () => {
       {} as BuildingSystem,
       {} as ProductionSystem,
       {} as StorageSystem,
+      {} as SurvivalSystem,
       32
     );
     const names = actions.plannerDefinitions().map((definition) => definition.name);

@@ -16,6 +16,7 @@ import type { MiningSystem } from "./mining-system.js";
 import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
+import type { SurvivalSystem } from "./survival-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -39,6 +40,7 @@ export class MinecraftActions {
     private readonly building: BuildingSystem,
     private readonly production: ProductionSystem,
     private readonly storage: StorageSystem,
+    private readonly survival: SurvivalSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -284,7 +286,7 @@ export class MinecraftActions {
         return this.sleepInVisibleBed(raw);
       case "wake_from_bed":
         if (!this.bot.isSleeping) return fail("Not currently sleeping");
-        await this.bot.wake();
+        await this.survival.wake();
         return ok("Woke from bed", this.perception.observe());
       case "recall": {
         const { query, limit } = z
@@ -618,7 +620,7 @@ export class MinecraftActions {
     const { item_name } = z.object({ item_name: z.string().min(1) }).parse(raw);
     const item = this.inventory.find(item_name);
     if (!item) return fail(`${item_name} is not in inventory`);
-    await this.inventory.consume(item_name);
+    await this.survival.consume(item_name);
     return ok(`Consumed ${item_name}`, this.perception.observe());
   }
 
@@ -677,13 +679,9 @@ export class MinecraftActions {
     if (!this.perception.isBlockCurrentlyVisible(args.x, args.y, args.z)) {
       return fail("That bed is not in the latest line-of-sight observation");
     }
-    const position = new Vec3(args.x, args.y, args.z);
-    const bed = this.perception.blockAt(position);
-    if (!bed || !bed.name.includes("bed")) return fail("The observed block is not a bed");
-    await this.movement.goNear(args, 2, 30_000);
-    if (!this.perception.canSeeBlock(bed)) return fail("The bed is no longer visible");
-    await this.bot.sleep(bed);
-    return ok(`Sleeping in ${bed.name}`);
+    const slept = await this.survival.sleepAt(args);
+    if (!slept) return fail("The visible bed could not be reached safely");
+    return ok("Sleeping in the visible bed");
   }
 
   private async depositItemInContainer(raw: unknown): Promise<ActionResult> {

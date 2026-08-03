@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Extracted vital-state policy, automatic eating, armour upkeep, food consumption, sleeping, waking, danger escalation, and combat-readiness decisions into SurvivalSystem; combat and project workflows now consume survival outcomes instead of raw health or hunger state.
 - Replaced the storage executor/action inversion with StorageSystem, which now owns proactive inventory-pressure storage, container selection, deposits, owned-container withdrawals, transfer verification, and persistent container accounting.
 - Extracted recipe resolution, bounded crafting, crafting-table interaction, furnace loading, fuel policy, output collection, and production outcomes into ProductionSystem; actions and project workflows no longer call Mineflayer crafting or furnace primitives.
 - Extracted blueprint placement, support selection, utility-block placement, traversal scaffolding, stair landings, material checks, retries, and placement verification into BuildingSystem; movement, actions, and project workflows no longer place blocks directly.
@@ -25,6 +26,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added focused survival-policy coverage plus enforcement against raw health, hunger, oxygen, automatic-eating, sleep, or wake access outside SurvivalSystem and read-only presentation adapters.
 - Added storage transfer and ownership coverage plus enforcement against direct container access outside StorageSystem.
 - Added production recipe and unavailable-material coverage plus enforcement against crafting or furnace access outside ProductionSystem.
 - Added building placement and missing-material coverage plus enforcement against block placement outside BuildingSystem.

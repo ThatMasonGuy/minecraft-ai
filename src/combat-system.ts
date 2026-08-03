@@ -17,6 +17,7 @@ import type { ActivityUpdate, Position } from "./types.js";
 import type { SensingSystem } from "./perception.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { LootingSystem } from "./looting-system.js";
+import type { SurvivalSystem } from "./survival-system.js";
 
 const ATTACK_RANGE = 3.15;
 const FOLLOW_RANGE = 2.7;
@@ -127,6 +128,7 @@ export class CombatSystem {
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
     private readonly looting: LootingSystem,
+    private readonly survival: SurvivalSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly execution?: ExecutionScope
   ) {}
@@ -198,7 +200,7 @@ export class CombatSystem {
       if (this.encounter) {
         this.encounter.minimumHealth = Math.min(
           this.encounter.minimumHealth,
-          this.bot.health
+          this.survival.snapshot().health
         );
       }
       switch (this.mode) {
@@ -321,7 +323,7 @@ export class CombatSystem {
   }
 
   private async tickEscape(): Promise<void> {
-    this.bot.autoEat?.enableAuto();
+    this.survival.resumeAutoCare();
     const dangers = this.currentEscapeDangers();
     const safeDistance = this.playerAggressor
       ? PLAYER_ESCAPE_DISTANCE
@@ -366,8 +368,8 @@ export class CombatSystem {
     }
 
     this.movement.hold();
-    this.bot.autoEat?.enableAuto();
-    const recovered = this.bot.health >= 16 && this.bot.food >= 16;
+    this.survival.resumeAutoCare();
+    const recovered = this.survival.snapshot().combatReady;
     const timedOut = Date.now() - this.recoveryStartedAt >= RECOVERY_TIMEOUT_MS;
     if (!recovered && !timedOut) return;
 
@@ -542,8 +544,8 @@ export class CombatSystem {
       trigger,
       targetName,
       targetType,
-      initialHealth: this.bot.health,
-      minimumHealth: this.bot.health,
+      initialHealth: this.survival.snapshot().health,
+      minimumHealth: this.survival.snapshot().health,
       swings: 0,
       confirmedHits: 0
     };
@@ -579,7 +581,7 @@ export class CombatSystem {
         durationMs: Date.now() - encounter.startedAt,
         initialHealth: encounter.initialHealth,
         minimumHealth: encounter.minimumHealth,
-        endingHealth: this.bot.health,
+        endingHealth: this.survival.snapshot().health,
         weaponName: encounter.weaponName,
         swings: encounter.swings,
         confirmedHits: encounter.confirmedHits
@@ -595,7 +597,7 @@ export class CombatSystem {
     const weapon = selectBestWeapon(this.inventory.items());
     return decideCombat({
       targetName: normalizedEntityName(target),
-      health: this.bot.health,
+      health: this.survival.snapshot().health,
       armorPieces: equippedArmorPieces(this.inventory),
       nearbyHostiles: threats.filter(
         (entity) => this.bot.entity.position.distanceTo(entity.position) <= 8
@@ -606,8 +608,7 @@ export class CombatSystem {
   }
 
   private async prepareToFight(): Promise<void> {
-    this.bot.autoEat?.disableAuto();
-    this.bot.autoEat?.cancelEat();
+    this.survival.suspendAutoCare();
     const weapon = selectBestWeapon(this.inventory.items());
     if (!weapon) return;
     if (this.inventory.heldItem()?.name !== weapon.name) {
@@ -656,7 +657,7 @@ export class CombatSystem {
     this.mode = "escaping";
     this.escapeStartedAt = Date.now();
     this.lowerShield();
-    this.bot.autoEat?.enableAuto();
+    this.survival.resumeAutoCare();
     this.execution?.claim();
     this.onActivity?.({
       phase: "acting",
@@ -677,7 +678,7 @@ export class CombatSystem {
   }
 
   private async tryDefensiveShove(): Promise<void> {
-    if (this.bot.autoEat?.isEating) return;
+    if (this.survival.isEating()) return;
     const threat = this.visibleHostiles()
       .filter(
         (entity) => this.bot.entity.position.distanceTo(entity.position) <= 2.8
@@ -723,7 +724,7 @@ export class CombatSystem {
 
   private beginLooting(): void {
     this.lowerShield();
-    this.bot.autoEat?.enableAuto();
+    this.survival.resumeAutoCare();
     this.mode = "looting";
     this.lootOrigin = this.bot.entity.position.clone();
     this.lootUntil = Date.now() + LOOT_COLLECTION_MS;
@@ -740,7 +741,7 @@ export class CombatSystem {
   private resetToIdle(detail: string, report = true): void {
     this.movement.hold();
     this.lowerShield();
-    this.bot.autoEat?.enableAuto();
+    this.survival.resumeAutoCare();
     this.mode = "idle";
     this.target = undefined;
     this.playerAggressor = undefined;

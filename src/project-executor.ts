@@ -22,6 +22,7 @@ import type { MiningSystem } from "./mining-system.js";
 import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
+import type { SurvivalSystem } from "./survival-system.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
@@ -92,6 +93,7 @@ export class ProjectExecutor {
     private readonly building: BuildingSystem,
     private readonly production: ProductionSystem,
     private readonly storage: StorageSystem,
+    private readonly survival: SurvivalSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -1291,7 +1293,7 @@ export class ProjectExecutor {
     state: ProspectState
   ): Promise<boolean> {
     if (
-      this.bot.food >= 18 &&
+      this.survival.snapshot().food >= 18 &&
       safeFoodCount(this.inventory) >= 3
     ) {
       state.forageOrigin = undefined;

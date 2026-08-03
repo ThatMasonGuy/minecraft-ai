@@ -201,4 +201,32 @@ describe("enclosed subsystem boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("keeps vital-state policy, automatic eating, and sleep mutations in survival", () => {
+    const allowed = new Set([
+      path.join(SOURCE_ROOT, "survival-system.ts"),
+      path.join(SOURCE_ROOT, "perception.ts"),
+      path.join(SOURCE_ROOT, "viewer-status.ts")
+    ]);
+    const forbidden = [
+      /(?:this\.)?bot\.(?:health|food|oxygenLevel)/,
+      /(?:this\.)?bot\.autoEat/,
+      /(?:this\.)?bot\.(?:sleep|wake)\s*\(/
+    ];
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            forbidden.some((pattern) => pattern.test(line))
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
 });
