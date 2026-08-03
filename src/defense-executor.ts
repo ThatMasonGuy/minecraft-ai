@@ -3,6 +3,7 @@ import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type { EpisodicMemory } from "./memory.js";
+import type { ExecutionScope } from "./execution-coordinator.js";
 import type { ActivityUpdate } from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -86,37 +87,81 @@ export class DefenseExecutor {
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
-    private readonly onActivity?: (activity: ActivityUpdate) => void
+    private readonly onActivity?: (activity: ActivityUpdate) => void,
+    private readonly execution?: ExecutionScope
   ) {}
 
   start(): void {
-    this.bot.on("entityHurt", this.onEntityHurt);
-    this.bot.on("entityDead", this.onEntityGone);
-    this.bot.on("entityGone", this.onEntityGone);
-    this.bot.on("playerCollect", this.onPlayerCollect);
-    this.timer = setInterval(() => void this.tick(), 200);
+    this.bot.on("entityHurt", this.scopedEntityHurt);
+    this.bot.on("entityDead", this.scopedEntityGone);
+    this.bot.on("entityGone", this.scopedEntityGone);
+    this.bot.on("playerCollect", this.scopedPlayerCollect);
+    this.timer = setInterval(() => this.runTick(), 200);
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
-    this.bot.removeListener("entityHurt", this.onEntityHurt);
-    this.bot.removeListener("entityDead", this.onEntityGone);
-    this.bot.removeListener("entityGone", this.onEntityGone);
-    this.bot.removeListener("playerCollect", this.onPlayerCollect);
+    this.bot.removeListener("entityHurt", this.scopedEntityHurt);
+    this.bot.removeListener("entityDead", this.scopedEntityGone);
+    this.bot.removeListener("entityGone", this.scopedEntityGone);
+    this.bot.removeListener("playerCollect", this.scopedPlayerCollect);
     this.bot.autoEat?.enableAuto();
     if (this.target || this.collectingItemId !== undefined) {
-      this.bot.pathfinder.stop();
+      if (this.execution) {
+        this.execution.runSync(() => this.bot.pathfinder.stop());
+      } else {
+        this.bot.pathfinder.stop();
+      }
     }
     this.target = undefined;
     this.collectingItemId = undefined;
     this.lastLootGoalAt = 0;
     this.lootCollectionUntil = 0;
+    this.execution?.release();
   }
 
   isActive(): boolean {
     return Boolean(this.target) || this.lootCollectionUntil > Date.now();
   }
+
+  private runTick(): void {
+    if (this.execution) {
+      void this.execution.run(() => this.tick());
+    } else {
+      void this.tick();
+    }
+  }
+
+  private readonly scopedEntityHurt = (
+    entity: Entity | undefined,
+    source: Entity | undefined
+  ): void => {
+    if (this.execution) {
+      this.execution.runSync(() => this.onEntityHurt(entity, source));
+    } else {
+      this.onEntityHurt(entity, source);
+    }
+  };
+
+  private readonly scopedEntityGone = (entity: Entity): void => {
+    if (this.execution) {
+      this.execution.runSync(() => this.onEntityGone(entity));
+    } else {
+      this.onEntityGone(entity);
+    }
+  };
+
+  private readonly scopedPlayerCollect = (
+    collector: Entity,
+    collected: Entity
+  ): void => {
+    if (this.execution) {
+      this.execution.runSync(() => this.onPlayerCollect(collector, collected));
+    } else {
+      this.onPlayerCollect(collector, collected);
+    }
+  };
 
   private readonly onEntityHurt = (
     entity: Entity | undefined,
@@ -138,6 +183,7 @@ export class DefenseExecutor {
     this.bot.autoEat?.disableAuto();
     this.bot.autoEat?.cancelEat();
     this.target = threat;
+    this.execution?.claim();
     this.origin = this.bot.entity.position.clone();
     this.followingTargetId = undefined;
     this.equippedForTargetId = undefined;

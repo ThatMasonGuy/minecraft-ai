@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import type { Bot } from "mineflayer";
 import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
+import type { ExecutionScope } from "./execution-coordinator.js";
 import type { ActivityUpdate, OwnedContainer, ProjectPlan } from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -22,21 +23,31 @@ export class StorageExecutor {
     private readonly memory: EpisodicMemory,
     private readonly actions: MinecraftActions,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
-    private readonly shouldPause?: () => boolean
+    private readonly shouldPause?: () => boolean,
+    private readonly execution?: ExecutionScope
   ) {}
 
   start(): void {
-    this.timer = setInterval(() => void this.tick(), 1_000);
-    void this.tick();
+    this.timer = setInterval(() => this.runTick(), 1_000);
+    this.runTick();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.execution?.release();
   }
 
   isActive(): boolean {
     return this.active;
+  }
+
+  private runTick(): void {
+    if (this.execution) {
+      void this.execution.run(() => this.tick());
+    } else {
+      void this.tick();
+    }
   }
 
   private async tick(): Promise<void> {
@@ -62,6 +73,7 @@ export class StorageExecutor {
     }
 
     this.active = true;
+    if (this.execution && !this.execution.claim()) return;
     this.running = true;
     try {
       const distance = distanceBetween(

@@ -4,6 +4,10 @@ All notable changes to this project are recorded in this file.
 
 ## Unreleased
 
+### Changed
+
+- Centralized deterministic executor priority and Pathfinder mutation ownership in an XState-backed runtime coordinator, so higher-priority safety work preempts lower-priority movement and unowned movement is rejected.
+
 ### Added
 
 - Added a manual planner mode with explicit `!plan <task>` turns so development does not generate scheduled or incidental API traffic.

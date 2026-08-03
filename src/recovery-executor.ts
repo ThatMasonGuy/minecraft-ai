@@ -3,6 +3,7 @@ import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type { EpisodicMemory } from "./memory.js";
+import type { ExecutionScope } from "./execution-coordinator.js";
 import type { MinecraftActions } from "./actions.js";
 import type {
   ActivityUpdate,
@@ -55,21 +56,31 @@ export class RecoveryExecutor {
     private readonly memory: EpisodicMemory,
     private readonly actions: MinecraftActions,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
-    private readonly shouldPauseForDefense?: () => boolean
+    private readonly shouldPauseForDefense?: () => boolean,
+    private readonly execution?: ExecutionScope
   ) {}
 
   start(): void {
-    this.timer = setInterval(() => void this.tick(), 500);
-    void this.tick();
+    this.timer = setInterval(() => this.runTick(), 500);
+    this.runTick();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.execution?.release();
   }
 
   isActive(): boolean {
     return this.memory.activeRecoveryJob() !== undefined;
+  }
+
+  private runTick(): void {
+    if (this.execution) {
+      void this.execution.run(() => this.tick());
+    } else {
+      void this.tick();
+    }
   }
 
   private async tick(): Promise<void> {

@@ -7,6 +7,7 @@ import { MinecraftActions } from "./actions.js";
 import { AutonomousAgent } from "./agent.js";
 import { config } from "./config.js";
 import { DefenseExecutor } from "./defense-executor.js";
+import { ExecutionCoordinator } from "./execution-coordinator.js";
 import type { EpisodicMemory } from "./memory.js";
 import { Perception } from "./perception.js";
 import { parsePlanningCommand } from "./planner-mode.js";
@@ -40,6 +41,7 @@ export class MinecraftRuntime {
   private projectExecutor?: ProjectExecutor;
   private recoveryExecutor?: RecoveryExecutor;
   private storageExecutor?: StorageExecutor;
+  private executionCoordinator?: ExecutionCoordinator;
   private reconnectTimer?: NodeJS.Timeout;
   private viewer?: ViewerServer;
   private operator?: OperatorServer;
@@ -63,6 +65,8 @@ export class MinecraftRuntime {
     this.projectExecutor?.stop();
     this.recoveryExecutor?.stop();
     this.storageExecutor?.stop();
+    this.executionCoordinator?.dispose();
+    this.executionCoordinator = undefined;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = undefined;
     if (this.viewer) void this.viewer.close();
@@ -108,6 +112,8 @@ export class MinecraftRuntime {
       movements.allowParkour = false;
       movements.allowSprinting = true;
       bot.pathfinder.setMovements(movements);
+      const executionCoordinator = new ExecutionCoordinator(bot);
+      this.executionCoordinator = executionCoordinator;
       bot.autoEat.setOpts({
         minHunger: 16,
         minHealth: 14,
@@ -132,7 +138,11 @@ export class MinecraftRuntime {
       this.defenseExecutor = new DefenseExecutor(
         bot,
         this.memory,
-        (activity) => this.viewerStatus.setDefense(activity)
+        (activity) => this.viewerStatus.setDefense(activity),
+        executionCoordinator.scope(
+          "defense",
+          () => this.defenseExecutor?.isActive() ?? false
+        )
       );
       this.defenseExecutor.start();
       if (config.viewerEnabled) {
@@ -163,7 +173,11 @@ export class MinecraftRuntime {
         this.memory,
         actions,
         (activity) => this.viewerStatus.setWork(activity),
-        () => this.defenseExecutor?.isActive() ?? false
+        () => this.defenseExecutor?.isActive() ?? false,
+        executionCoordinator.scope(
+          "recovery",
+          () => this.recoveryExecutor?.isActive() ?? false
+        )
       );
       this.recoveryExecutor.start();
       this.storageExecutor = new StorageExecutor(
@@ -173,7 +187,11 @@ export class MinecraftRuntime {
         (activity) => this.viewerStatus.setWork(activity),
         () =>
           (this.defenseExecutor?.isActive() ?? false) ||
-          (this.recoveryExecutor?.isActive() ?? false)
+          (this.recoveryExecutor?.isActive() ?? false),
+        executionCoordinator.scope(
+          "storage",
+          () => this.storageExecutor?.isActive() ?? false
+        )
       );
       this.storageExecutor.start();
       this.agent = new AutonomousAgent(this.memory, perception, actions, {
@@ -244,7 +262,11 @@ export class MinecraftRuntime {
         () =>
           (this.defenseExecutor?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false) ||
-          (this.storageExecutor?.isActive() ?? false)
+          (this.storageExecutor?.isActive() ?? false),
+        executionCoordinator.scope(
+          "work",
+          () => this.memory.activeWorkOrder() !== undefined
+        )
       );
       this.projectExecutor = new ProjectExecutor(
         bot,
@@ -263,7 +285,11 @@ export class MinecraftRuntime {
         () =>
           (this.defenseExecutor?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false) ||
-          (this.storageExecutor?.isActive() ?? false)
+          (this.storageExecutor?.isActive() ?? false),
+        executionCoordinator.scope(
+          "project",
+          () => this.memory.activeProject() !== undefined
+        )
       );
 
       const snapshot = perception.observe();
@@ -484,12 +510,14 @@ export class MinecraftRuntime {
       this.projectExecutor?.stop();
       this.recoveryExecutor?.stop();
       this.storageExecutor?.stop();
+      this.executionCoordinator?.dispose();
       this.agent = undefined;
       this.defenseExecutor = undefined;
       this.workExecutor = undefined;
       this.projectExecutor = undefined;
       this.recoveryExecutor = undefined;
       this.storageExecutor = undefined;
+      this.executionCoordinator = undefined;
       const operator = this.operator;
       this.operator = undefined;
       if (operator) {

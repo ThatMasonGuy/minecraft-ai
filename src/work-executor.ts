@@ -1,5 +1,6 @@
 import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
+import type { ExecutionScope } from "./execution-coordinator.js";
 import type { Perception } from "./perception.js";
 import type {
   ActivityUpdate,
@@ -39,17 +40,27 @@ export class WorkExecutor {
     private readonly tickMs: number,
     private readonly requestReplan: (reason: string) => void,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
-    private readonly shouldPauseForDefense?: () => boolean
+    private readonly shouldPauseForDefense?: () => boolean,
+    private readonly execution?: ExecutionScope
   ) {}
 
   start(): void {
-    this.timer = setInterval(() => void this.tick(), this.tickMs);
-    void this.tick();
+    this.timer = setInterval(() => this.runTick(), this.tickMs);
+    this.runTick();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.execution?.release();
+  }
+
+  private runTick(): void {
+    if (this.execution) {
+      void this.execution.run(() => this.tick());
+    } else {
+      void this.tick();
+    }
   }
 
   private async tick(): Promise<void> {
