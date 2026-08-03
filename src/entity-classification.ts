@@ -39,7 +39,7 @@ const HOSTILE_MOBS = new Set([
 
 export function normalizedEntityName(entity: Entity): string {
   return normalizeEntityName(
-    entity.name ?? entity.displayName ?? entity.mobType ?? "mob"
+    entity.name ?? entity.displayName ?? "mob"
   );
 }
 
@@ -67,9 +67,7 @@ export function isRecognizedHostile(entity: Entity): boolean {
   return (
     entity.isValid &&
     isPermittedMobTarget(entity) &&
-    [entity.name, entity.displayName, entity.mobType].some(
-      isRecognizedHostileName
-    )
+    [entity.name, entity.displayName].some(isRecognizedHostileName)
   );
 }
 

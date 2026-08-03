@@ -23,12 +23,14 @@ const ATTACK_RANGE = 3.15;
 const FOLLOW_RANGE = 2.7;
 const STRIKE_SPACING_DISTANCE = 4.5;
 const MOB_ESCAPE_DISTANCE = 10;
+const RANGED_ESCAPE_DISTANCE = 24;
 const PLAYER_ESCAPE_DISTANCE = 18;
 const MAX_PURSUIT_DISTANCE = 16;
 const PASSIVE_SCAN_INTERVAL_MS = 250;
 const CONTACT_TIMEOUT_MS = 15_000;
 const PLAYER_HIT_WINDOW_MS = 30_000;
 const MINIMUM_ESCAPE_MS = 2_000;
+const ESCAPE_QUIET_MS = 4_000;
 const RECOVERY_TIMEOUT_MS = 12_000;
 const POST_ESCAPE_SUPPRESSION_MS = 5_000;
 const LOOT_COLLECTION_MS = 8_000;
@@ -58,6 +60,17 @@ const ALWAYS_ESCAPE = new Set([
   "zoglin"
 ]);
 const RANGED_HOSTILES = new Set(["bogged", "skeleton", "stray"]);
+const LONG_RANGE_HOSTILES = new Set([
+  ...RANGED_HOSTILES,
+  "blaze",
+  "breeze",
+  "elder_guardian",
+  "ghast",
+  "guardian",
+  "pillager",
+  "shulker",
+  "witch"
+]);
 
 export type CombatMode =
   | "idle"
@@ -345,13 +358,16 @@ export class CombatSystem {
   private async tickEscape(): Promise<void> {
     this.survival.resumeAutoCare();
     const dangers = this.currentEscapeDangers();
-    const safeDistance = this.playerAggressor
-      ? PLAYER_ESCAPE_DISTANCE
-      : MOB_ESCAPE_DISTANCE;
+    const safeDistance = this.escapeSafeDistance();
     const result = this.movement.escape({ dangers, safeDistance });
     const elapsed = Date.now() - this.escapeStartedAt;
+    const quietFor = Date.now() - this.lastContactAt;
 
-    if (result.status === "safe" && elapsed >= MINIMUM_ESCAPE_MS) {
+    if (
+      result.status === "safe" &&
+      elapsed >= MINIMUM_ESCAPE_MS &&
+      quietFor >= ESCAPE_QUIET_MS
+    ) {
       this.mode = "recovering";
       this.recoveryStartedAt = Date.now();
       this.movement.hold();
@@ -374,16 +390,17 @@ export class CombatSystem {
   }
 
   private tickRecovery(): void {
-    const hostiles = this.visibleHostiles().filter(
-      (entity) => this.bot.entity.position.distanceTo(entity.position) < 8
-    );
+    const hostiles = this.visibleHostiles();
     const playerTooClose =
       this.playerAggressor?.isValid &&
       this.bot.entity.position.distanceTo(this.playerAggressor.position) <
         PLAYER_ESCAPE_DISTANCE;
     if (hostiles.length > 0 || playerTooClose) {
-      this.mode = "escaping";
-      this.escapeStartedAt = Date.now();
+      const threat = playerTooClose ? this.playerAggressor : hostiles[0];
+      this.startEscape(
+        threat,
+        "A threat remained visible during combat recovery"
+      );
       return;
     }
 
@@ -454,7 +471,11 @@ export class CombatSystem {
           : this.visibleHostiles()[0];
       if (!threat) return;
       this.lastContactAt = Date.now();
-      if (this.mode === "escaping" || this.mode === "recovering") return;
+      if (this.mode === "escaping") return;
+      if (this.mode === "recovering") {
+        this.startEscape(threat, "The bot took damage while recovering");
+        return;
+      }
       if (this.target && this.target.id !== threat.id) {
         this.startEscape(
           this.target,
@@ -695,6 +716,17 @@ export class CombatSystem {
     const unique = new Map<number, Entity>();
     for (const entity of entities) unique.set(entity.id, entity);
     return [...unique.values()].map(toMovementDanger);
+  }
+
+  private escapeSafeDistance(): number {
+    if (this.playerAggressor?.isValid) return PLAYER_ESCAPE_DISTANCE;
+    const threats = this.visibleHostiles();
+    if (this.target?.isValid) threats.push(this.target);
+    return threats.some((entity) =>
+      LONG_RANGE_HOSTILES.has(normalizedEntityName(entity))
+    )
+      ? RANGED_ESCAPE_DISTANCE
+      : MOB_ESCAPE_DISTANCE;
   }
 
   private async tryDefensiveShove(): Promise<void> {

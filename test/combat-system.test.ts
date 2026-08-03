@@ -208,6 +208,97 @@ describe("player aggression escape", () => {
   });
 });
 
+describe("combat escape recovery", () => {
+  it("keeps ranged separation and resumes escape when recovery takes damage", async () => {
+    vi.useFakeTimers();
+    try {
+      const emitter = new EventEmitter();
+      const botEntity = {
+        id: 1,
+        height: 1.8,
+        position: new Vec3(0, 64, 0)
+      };
+      const skeleton = {
+        id: 3,
+        type: "hostile",
+        name: "skeleton",
+        displayName: "Skeleton",
+        username: undefined,
+        isValid: true,
+        height: 1.99,
+        position: new Vec3(12, 64, 0)
+      };
+      const bot = Object.assign(emitter, {
+        entity: botEntity,
+        entities: { 1: botEntity, 3: skeleton },
+        game: { dimension: "overworld" },
+        attack: vi.fn(),
+        activateItem: vi.fn(),
+        deactivateItem: vi.fn()
+      });
+      const movement = {
+        follow: vi.fn(),
+        approach: vi.fn(),
+        face: vi.fn(async () => undefined),
+        hold: vi.fn(),
+        escape: vi.fn(() => ({ status: "safe" as const }))
+      };
+      const combat = new CombatSystem(
+        bot as never,
+        { record: vi.fn(), activity: vi.fn() } as never,
+        movement,
+        {
+          visibleEntitiesRaw: () => [skeleton],
+          hasLineOfSight: () => true
+        } as never,
+        {
+          items: () => [],
+          find: () => undefined,
+          heldItem: () => undefined,
+          equipment: () => undefined,
+          equip: vi.fn(async () => false)
+        } as never,
+        { collectStep: vi.fn(), endSession: vi.fn() } as never,
+        {
+          snapshot: () => ({
+            health: 20,
+            food: 20,
+            oxygen: 20,
+            dangerous: false,
+            combatReady: true
+          }),
+          suspendAutoCare: vi.fn(),
+          resumeAutoCare: vi.fn(),
+          isEating: () => false
+        } as never
+      );
+      combat.start();
+
+      emitter.emit("physicsTick");
+      expect(combat.currentMode()).toBe("escaping");
+      await Promise.resolve();
+      emitter.emit("physicsTick");
+      await Promise.resolve();
+      expect(movement.escape).toHaveBeenLastCalledWith({
+        dangers: [{ position: skeleton.position }],
+        safeDistance: 24
+      });
+
+      vi.advanceTimersByTime(4_001);
+      emitter.emit("physicsTick");
+      await Promise.resolve();
+      expect(combat.currentMode()).toBe("recovering");
+
+      emitter.emit("entityHurt", botEntity, skeleton);
+      expect(combat.currentMode()).toBe("escaping");
+      expect(bot.attack).not.toHaveBeenCalled();
+      combat.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("combat API ownership", () => {
   it("accepts a visible non-player target and rejects player targeting", () => {
     const emitter = new EventEmitter();
