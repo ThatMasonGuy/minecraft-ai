@@ -91,10 +91,13 @@ describe("enclosed task lifecycle", () => {
 
   it("compiles a high-level project and creates its measurable goal", () => {
     const { memory, tasks } = createTasks();
-    const project = tasks.delegateProject(
+    const project = tasks.delegateHouseProject(
       {
-        kind: "starter_shelter",
-        scale: "compact",
+        design: {
+          designName: "birch courtyard cottage",
+          footprintRows: ["##D##", "#####", "#####", "#####", "#####"],
+          wallHeight: 3
+        },
         dimension: "overworld",
         visibleBlocks: [{ name: "birch_log", distance: 4 }],
         inventory: []
@@ -105,13 +108,13 @@ describe("enclosed task lifecycle", () => {
     expect(project).toMatchObject({
       origin: "planner",
       status: "active",
-      title: "Build a compact birch starter house"
+      title: "Build birch courtyard cottage in birch"
     });
     expect(project.goalId).toBeDefined();
     expect(memory.activeGoals()).toContainEqual(
       expect.objectContaining({
         id: project.goalId,
-        title: "Establish a verified starter shelter"
+        title: "Build birch courtyard cottage"
       })
     );
     memory.close();

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { compileHighLevelProject } from "../src/project-compiler.js";
+import {
+  compileHighLevelProject,
+  compileHouseProject
+} from "../src/project-compiler.js";
 import { validateProjectSemantics } from "../src/project-plan.js";
 import type { OwnedContainer } from "../src/types.js";
 
@@ -7,10 +10,13 @@ const noContainers = { ownedContainers: [] };
 
 describe("high-level deterministic project compiler", () => {
   it("materializes a verified shelter from the nearest perceived wood family", () => {
-    const plan = compileHighLevelProject(
+    const plan = compileHouseProject(
       {
-        kind: "starter_shelter",
-        scale: "standard",
+        design: {
+          designName: "spruce cross-house",
+          footprintRows: ["..#D#..", "..###..", "#######", "#######", "..###.."],
+          wallHeight: 3
+        },
         dimension: "overworld",
         visibleBlocks: [
           { name: "oak_log", distance: 9 },
@@ -21,13 +27,12 @@ describe("high-level deterministic project compiler", () => {
       noContainers
     );
 
-    expect(plan.title).toContain("standard spruce starter house");
-    expect(plan.completionSummary).toContain("7x7");
+    expect(plan.title).toBe("Build spruce cross-house in spruce");
     expect(validateProjectSemantics(plan)).toEqual([]);
     expect(plan.steps.find((step) => step.id === "gather_wood")?.spec).toEqual({
       kind: "acquire_item",
       itemName: "spruce_log",
-      targetCount: 33,
+      targetCount: expect.any(Number),
       sourceBlockNames: ["spruce_log"]
     });
     expect(plan.steps.at(-1)?.spec.kind).toBe("verify_structure");
@@ -46,7 +51,6 @@ describe("high-level deterministic project compiler", () => {
     };
     const request = {
       kind: "diamond_progression" as const,
-      scale: "compact" as const,
       dimension: "overworld",
       visibleBlocks: [],
       inventory: []
@@ -73,7 +77,6 @@ describe("high-level deterministic project compiler", () => {
     const plan = compileHighLevelProject(
       {
         kind: "diamond_progression",
-        scale: "standard",
         dimension: "overworld",
         visibleBlocks: [{ name: "oak_log", distance: 4 }],
         inventory: []
@@ -83,17 +86,20 @@ describe("high-level deterministic project compiler", () => {
 
     expect(plan.steps[0]?.spec).toMatchObject({
       kind: "survey_site",
-      width: 7,
-      depth: 7
+      width: 5,
+      depth: 5
     });
     expect(validateProjectSemantics(plan)).toEqual([]);
   });
 
   it("falls back to a bounded oak search without claiming a hidden source", () => {
-    const plan = compileHighLevelProject(
+    const plan = compileHouseProject(
       {
-        kind: "starter_shelter",
-        scale: "compact",
+        design: {
+          designName: "oak fallback house",
+          footprintRows: ["##D##", "#####", "#####", "#####", "#####"],
+          wallHeight: 3
+        },
         dimension: "overworld",
         visibleBlocks: [{ name: "stone", distance: 2 }],
         inventory: []

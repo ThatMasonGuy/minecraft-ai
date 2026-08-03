@@ -26,6 +26,7 @@ describe("planner tool boundary", () => {
       "create_goal",
       "finish_goal",
       "delegate_gather",
+      "delegate_house_project",
       "delegate_project",
       "cancel_work_order"
     ]);
@@ -38,8 +39,8 @@ describe("planner tool boundary", () => {
     );
   });
 
-  it("delegates a project outcome without exposing its compiled plan", async () => {
-    const delegateProject = vi.fn(() => ({ id: 17 }));
+  it("delegates planner-authored house geometry without motor instructions", async () => {
+    const delegateHouseProject = vi.fn(() => ({ id: 17 }));
     const record = vi.fn(() => 1);
     const tools = new PlannerTools(
       {} as EpisodicMemory,
@@ -53,23 +54,39 @@ describe("planner tool boundary", () => {
           inventory: [{ name: "stick", count: 2, slot: 0 }]
         })
       } as never,
-      { delegateProject } as never,
+      { delegateHouseProject } as never,
       {} as CommunicationSystem,
       { record, activity: vi.fn() } as TelemetrySystem
     );
 
     await expect(
-      tools.execute("delegate_project", {
+      tools.execute("delegate_house_project", {
         goal_id: 0,
-        outcome: "starter_shelter",
-        scale: "standard"
+        design_name: "L-shaped spruce lodge",
+        footprint_rows: [
+          "##D####",
+          "#######",
+          "#######",
+          "###....",
+          "###...."
+        ],
+        wall_height: 4
       })
     ).resolves.toMatchObject({ ok: true, data: { id: 17 } });
-    expect(delegateProject).toHaveBeenCalledWith(
+    expect(delegateHouseProject).toHaveBeenCalledWith(
       {
         goalId: undefined,
-        kind: "starter_shelter",
-        scale: "standard",
+        design: {
+          designName: "L-shaped spruce lodge",
+          footprintRows: [
+            "##D####",
+            "#######",
+            "#######",
+            "###....",
+            "###...."
+          ],
+          wallHeight: 4
+        },
         dimension: "overworld",
         visibleBlocks: [{ name: "spruce_log", distance: 5 }],
         inventory: [{ name: "stick", count: 2 }]
@@ -79,7 +96,7 @@ describe("planner tool boundary", () => {
 
     const definition = tools
       .plannerDefinitions()
-      .find((candidate) => candidate.name === "delegate_project");
+      .find((candidate) => candidate.name === "delegate_house_project");
     expect(JSON.stringify(definition?.parameters)).not.toMatch(
       /coordinate|position|blueprint|steps|\b[xyz]\b/
     );

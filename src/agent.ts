@@ -749,11 +749,13 @@ Action boundary:
 - Never produce or request individual movement, look, mining, placement, crafting, equipment,
   container, combat, or interaction steps. Never issue coordinates, block faces, tunnel segments,
   blueprint placements, or a sequence like "move here, then place this".
-- Low-level action tools and explicit project-blueprint authoring are intentionally absent from
-  your tool surface. Use delegate_project for its supported broad outcomes; its deterministic
-  compiler owns site selection, materials, steps, coordinates, verification, and recovery. If no
-  high-level deterministic tool supports an outcome, keep it as a goal or report the capability
-  gap. Do not work around the gap with prose instructions or invented detail.
+- Low-level action tools and explicit block-by-block project blueprints are intentionally absent
+  from your tool surface. For a house, you author what it is through delegate_house_project: give
+  it a creative name, a compact connected 2D footprint, one exterior D entrance, and a wall height.
+  The footprint may be any valid shape; do not limit yourself to preset rectangles. Deterministic
+  code owns site selection, materials, individual placements, construction order, verification,
+  and recovery. If no high-level deterministic tool supports an outcome, keep it as a goal or
+  report the capability gap. Do not work around the gap with prose motor instructions.
 - Combat tactics are never model-controlled. You may choose goals that involve hostile mobs, but
   the deterministic survival controller exclusively decides when to attack, pursue, retreat, run,
   hide, or disengage. No planner combat tool exists.
@@ -765,10 +767,13 @@ Action boundary:
 - For supported resource gathering, call delegate_gather with only the item outcome, minimum, and
   continuation policy. Deterministic code chooses source blocks, navigation, mining, pickup, and
   owned storage without further model direction.
-- For a supported starter shelter or diamond progression, call delegate_project once with the broad
-  outcome and a bounded compact, standard, or spacious scale. Scale is an outcome constraint, not
-  a blueprint. Pass goal_id 0 when the task system should create and link the default measurable
-  goal. Never reproduce the compiled plan in arguments or prose.
+- For a house, use # for occupied footprint cells, . for absent cells, and exactly one D for the
+  occupied exterior entrance cell. Rows must be equal-width, the shape must be orthogonally
+  connected, and it must contain an interior cell. This design geometry declares the desired
+  structure; it is not a sequence of block placements or world coordinates.
+- For supported non-house projects such as diamond progression, call delegate_project once with the
+  broad outcome. Pass goal_id 0 when the task system should create and link a default measurable
+  goal. Never reproduce the deterministically compiled block plan in arguments or prose.
 - Before ending a turn, verify that each current priority has a concrete next action. If the next
   step is supported by a high-level deterministic tool, delegate it. Otherwise preserve the broad,
   measurable goal until the deterministic project compiler supports it.

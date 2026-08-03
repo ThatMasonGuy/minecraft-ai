@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   generatedBirchStarterHouse,
-  generatedMiningProgressionProject,
-  generatedStarterHouseProject
+  generatedMiningProgressionProject
 } from "../src/generated-projects.js";
 import {
   parseProjectPlanDraft,
@@ -53,35 +52,6 @@ describe("project plans", () => {
     expect(
       shell.spec.placements.filter((placement) => placement.dy === 3)
     ).toHaveLength(25);
-  });
-
-  it.each([
-    { scale: "compact" as const, width: 5, logTarget: 21 },
-    { scale: "standard" as const, width: 7, logTarget: 33 },
-    { scale: "spacious" as const, width: 9, logTarget: 47 }
-  ])("compiles the $scale shelter scale deterministically", ({ scale, width, logTarget }) => {
-    const plan = generatedStarterHouseProject(3, "birch", scale);
-    const survey = plan.steps.find((step) => step.id === "survey_site");
-    const gather = plan.steps.find((step) => step.id === "gather_wood");
-    const shell = plan.steps.find((step) => step.id === "build_shell");
-
-    expect(survey?.spec).toMatchObject({
-      kind: "survey_site",
-      width,
-      depth: width,
-      maxSitePreparationBlocks: width * width * 4
-    });
-    expect(gather?.spec).toMatchObject({
-      kind: "acquire_item",
-      targetCount: logTarget
-    });
-    expect(shell?.spec.kind).toBe("place_blueprint");
-    if (shell?.spec.kind === "place_blueprint") {
-      expect(
-        shell.spec.placements.filter((placement) => placement.dy === 3)
-      ).toHaveLength(width * width);
-    }
-    expect(validateProjectSemantics(plan)).toEqual([]);
   });
 
   it("accepts a perception-bounded prospecting project", () => {

@@ -1,11 +1,10 @@
 import {
+  generatedHouseProject,
   generatedMiningProgressionProject,
-  generatedStarterHouseProject,
-  PROJECT_SCALES,
   SUPPORTED_WOOD_FAMILIES,
-  type ProjectScale,
   type SupportedWoodFamily
 } from "./generated-projects.js";
+import type { HouseDesign } from "./house-design.js";
 import type {
   InventoryEntry,
   OwnedContainer,
@@ -13,7 +12,6 @@ import type {
 } from "./types.js";
 
 export const HIGH_LEVEL_PROJECT_KINDS = [
-  "starter_shelter",
   "diamond_progression"
 ] as const;
 
@@ -22,7 +20,14 @@ export type HighLevelProjectKind = (typeof HIGH_LEVEL_PROJECT_KINDS)[number];
 export interface HighLevelProjectRequest {
   goalId?: number;
   kind: HighLevelProjectKind;
-  scale: ProjectScale;
+  dimension: string;
+  visibleBlocks: Array<{ name: string; distance: number }>;
+  inventory: Array<Pick<InventoryEntry, "name" | "count">>;
+}
+
+export interface HouseProjectRequest {
+  goalId?: number;
+  design: HouseDesign;
   dimension: string;
   visibleBlocks: Array<{ name: string; distance: number }>;
   inventory: Array<Pick<InventoryEntry, "name" | "count">>;
@@ -40,12 +45,6 @@ export function compileHighLevelProject(
     selectKnownWoodFamily(request, context.ownedContainers) ?? "oak";
 
   switch (request.kind) {
-    case "starter_shelter":
-      return generatedStarterHouseProject(
-        request.goalId,
-        woodFamily,
-        request.scale
-      );
     case "diamond_progression": {
       const rememberedSite = context.ownedContainers.find(
         (container) =>
@@ -54,15 +53,20 @@ export function compileHighLevelProject(
       return generatedMiningProgressionProject(
         request.goalId,
         rememberedSite,
-        woodFamily,
-        request.scale
+        woodFamily
       );
     }
   }
 }
 
-export { PROJECT_SCALES };
-export type { ProjectScale };
+export function compileHouseProject(
+  request: HouseProjectRequest,
+  context: ProjectCompilationContext
+): ProjectPlanDraft {
+  const woodFamily =
+    selectKnownWoodFamily(request, context.ownedContainers) ?? "oak";
+  return generatedHouseProject(request.goalId, woodFamily, request.design);
+}
 
 export function defaultGoalForProject(kind: HighLevelProjectKind): {
   title: string;
@@ -70,13 +74,6 @@ export function defaultGoalForProject(kind: HighLevelProjectKind): {
   priority: number;
 } {
   switch (kind) {
-    case "starter_shelter":
-      return {
-        title: "Establish a verified starter shelter",
-        rationale:
-          "Create an enclosed, roofed, accessible base through deterministic gathering, production, building, and verification.",
-        priority: 80
-      };
     case "diamond_progression":
       return {
         title: "Establish storage and recover three diamonds",
@@ -87,8 +84,24 @@ export function defaultGoalForProject(kind: HighLevelProjectKind): {
   }
 }
 
+export function defaultGoalForHouse(design: HouseDesign): {
+  title: string;
+  rationale: string;
+  priority: number;
+} {
+  return {
+    title: `Build ${design.designName}`,
+    rationale:
+      "Realize the authored connected footprint as a safe enclosed structure through deterministic site preparation, gathering, production, construction, and verification.",
+    priority: 80
+  };
+}
+
 function selectKnownWoodFamily(
-  request: HighLevelProjectRequest,
+  request: Pick<
+    HighLevelProjectRequest,
+    "dimension" | "visibleBlocks" | "inventory"
+  >,
   containers: OwnedContainer[]
 ): SupportedWoodFamily | undefined {
   const visible = [...request.visibleBlocks]

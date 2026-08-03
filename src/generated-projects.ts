@@ -22,9 +22,6 @@ export const SUPPORTED_WOOD_FAMILIES = [
 
 export type SupportedWoodFamily = (typeof SUPPORTED_WOOD_FAMILIES)[number];
 
-export const PROJECT_SCALES = ["compact", "standard", "spacious"] as const;
-export type ProjectScale = (typeof PROJECT_SCALES)[number];
-
 export function generatedBirchStarterHouse(
   goalId: number
 ): ProjectPlanDraft {
@@ -33,15 +30,15 @@ export function generatedBirchStarterHouse(
 
 export function generatedStarterHouseProject(
   goalId: number | undefined,
-  woodFamily: SupportedWoodFamily,
-  scale: ProjectScale = "compact"
+  woodFamily: SupportedWoodFamily
 ): ProjectPlanDraft {
-  const { width, depth } = projectScaleDimensions(scale);
+  const width = 5;
+  const depth = 5;
   const rows = Array.from({ length: depth }, () => "#".repeat(width));
   const doorX = Math.floor(width / 2);
   rows[0] = `${"#".repeat(doorX)}D${"#".repeat(width - doorX - 1)}`;
   return generatedHouseProject(goalId, woodFamily, {
-    designName: `${scale} starter house`,
+    designName: "starter house fixture",
     footprintRows: rows,
     wallHeight: 3
   });
@@ -189,10 +186,10 @@ export function generatedHouseProject(
 export function generatedMiningProgressionProject(
   goalId: number | undefined,
   rememberedSite?: { x: number; y: number; z: number },
-  woodFamily: SupportedWoodFamily = "oak",
-  scale: ProjectScale = "compact"
+  woodFamily: SupportedWoodFamily = "oak"
 ): ProjectPlanDraft {
-  const { width, depth } = projectScaleDimensions(scale);
+  const width = 5;
+  const depth = 5;
   const logName = `${woodFamily}_log`;
   const planksName = `${woodFamily}_planks`;
   const initialSteps: ProjectPlanDraft["steps"] = rememberedSite
@@ -497,18 +494,4 @@ export function relative(
   dz: number
 ): RelativePosition {
   return { dx, dy, dz };
-}
-
-export function projectScaleDimensions(scale: ProjectScale): {
-  width: number;
-  depth: number;
-} {
-  switch (scale) {
-    case "compact":
-      return { width: 5, depth: 5 };
-    case "standard":
-      return { width: 7, depth: 7 };
-    case "spacious":
-      return { width: 9, depth: 9 };
-  }
 }

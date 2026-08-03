@@ -10,10 +10,12 @@ The OpenAI-powered Minecraft agent is the planner. Enclosed deterministic system
 
 The planner may define outcomes, priorities, constraints, minimum success conditions, and replacement or stopping policy. It must never define motor instructions.
 
+For creative construction, the planner may define bounded declarative design geometry such as a connected two-dimensional footprint, entrance topology, dimensions, and wall height. That geometry describes what to build. Deterministic systems still own where and how it is realized: world site, orientation, materials, individual placements, ordering, movement, retries, and verification.
+
 - Never ask the planner to move or look at coordinates, mine or place an individual block, choose a block face, enumerate blueprint placements, craft/equip/consume one step at a time, manipulate a specific slot, or provide a sequence of equivalent low-level instructions.
 - Low-level operations may exist only inside their owning deterministic subsystem. They must not exist in PlannerTools or appear in the planner's callable tool surface. Enforce this with narrow types and architecture tests; prompt text alone is not sufficient.
 - The planner may delegate only through broad, typed tools such as a gathering outcome. Deterministic code owns source selection, navigation, interaction coordinates, retries, storage choice, decomposition, verification, and continuation.
-- Explicit project JSON and blueprints are operator test fixtures only. Codex must not generate or submit them as a substitute for a missing high-level project compiler.
+- Explicit project JSON and compiled three-dimensional block blueprints are operator test fixtures only. Compact planner-authored design geometry is allowed only through a bounded compiler-owned schema; it must not contain world coordinates or compiled placements. Codex must not generate or submit fixture plans as a substitute for a missing high-level project compiler.
 - When a broad outcome is unsupported, preserve it as a measurable goal and implement the reusable deterministic compiler or executor. Never temporarily bridge the gap with model-authored coordinates or step-by-step instructions.
 - When reviewing a new planner tool, reject any schema that exposes world coordinates, block faces, inventory slots, or an ordered list of motor actions unless the user explicitly changes this architectural rule.
 

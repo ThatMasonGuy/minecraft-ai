@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Replaced coded compact, standard, and spacious house choices with planner-authored connected footprint geometry; autonomous house identity and layout now come from planning while deterministic systems own safe realization.
 - Replaced roaming project-site surveys with nearby scored candidate selection and bounded MiningSystem-owned site clearing; projects now prepare safe loaded terrain instead of repeatedly pathing through spiral waypoints in search of a pre-cleared rectangle.
 - Enforced a hard 15-minute minimum between all planner API requests, stopped tool continuations once deterministic work is active, suppressed every model wake while a recoverable project is progressing, and routed only whole-project completion or irrecoverable blocking back to planning.
 - Changed escape routing to retain a useful Pathfinder destination for the full route instead of replacing it every 500 milliseconds; evasion now replans only after reaching the route segment, losing its threat-separation advantage, or genuinely stalling.
@@ -43,7 +44,6 @@ All notable changes to this project are recorded in this file.
 ### Added
 
 - Added a bounded planner-authored house design language for arbitrary connected footprints, entrance placement, names, and wall heights; deterministic compilation now derives site preparation, materials, workbench location, shell placements, and verification from the authored geometry instead of selecting a coded layout.
-- Added planner-visible compact, standard, and spacious project scales; the deterministic compiler now derives 5x5, 7x7, or 9x9 shelter footprints, materials, preparation limits, placements, and verification without exposing a blueprint.
 - Added a coordinate-free high-level project compiler and `delegate_project` planner tool for verified starter shelters and full diamond progressions; deterministic code now owns material/site selection, complete plan generation, goal linking, and validation.
 - Added architecture enforcement against importing the concrete persistence implementation into enclosed subsystems.
 - Added planner-tool delegation coverage and enforcement that rejects motor-system imports, coordinate-level tools, a revived actions module, or goal mutations outside TaskSystem.

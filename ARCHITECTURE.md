@@ -18,7 +18,7 @@ This file is the ownership map for deterministic behavior. A raw Minecraft opera
 | SurvivalSystem | `src/survival-system.ts` | Vitals policy, automatic eating, armour upkeep, consumption, sleep, wake, danger edges, and combat readiness |
 | CommunicationSystem | `src/communication-system.ts` | Outbound chat and whispers |
 | AcquisitionSystem | `src/acquisition-system.ts` | Persistent gather execution, source search, survival pauses, storage cycles, progress, and bounded escalation |
-| ProjectSystem | `src/project-system.ts`, `src/project-compiler.ts`, `src/generated-projects.ts` | Coordinate-free high-level project compilation plus durable multi-stage execution and verification through lower-level system APIs |
+| ProjectSystem | `src/project-system.ts`, `src/project-compiler.ts`, `src/generated-projects.ts`, `src/house-design.ts` | Bounded planner-authored design geometry, deterministic project compilation, and durable multi-stage execution and verification through lower-level system APIs |
 | RecoverySystem | `src/recovery-system.ts` | Safety-gated death-site routing, loadout preparation, loot recovery, expiry, and project rewind |
 | TaskSystem | `src/task-system.ts` | Goal, project, work-order, and child-task lifecycle; workflow startup and shutdown |
 | TelemetrySystem | `src/telemetry-system.ts` | Persistent subsystem events and activity-channel routing |

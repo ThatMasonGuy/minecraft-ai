@@ -5,10 +5,8 @@ import type { SensingSystem } from "./perception.js";
 import type { TaskSystem } from "./task-system.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
 import type { ActionResult } from "./types.js";
-import {
-  HIGH_LEVEL_PROJECT_KINDS,
-  PROJECT_SCALES
-} from "./project-compiler.js";
+import { HIGH_LEVEL_PROJECT_KINDS } from "./project-compiler.js";
+import { parseHouseDesign } from "./house-design.js";
 
 export interface PlannerToolDefinition {
   type: "function";
@@ -25,6 +23,7 @@ const HIGH_LEVEL_PLANNER_TOOLS = new Set([
   "create_goal",
   "finish_goal",
   "delegate_gather",
+  "delegate_house_project",
   "delegate_project",
   "cancel_work_order"
 ]);
@@ -80,14 +79,27 @@ export class PlannerTools {
         }
       ),
       tool(
+        "delegate_house_project",
+        "Author and start a house by declaring its connected 2D footprint. This defines what the house is; deterministic systems choose the site and derive materials, block placements, construction order, retries, and verification. Use # for occupied cells, . for absent cells, and exactly one D for an occupied exterior entrance cell.",
+        {
+          goal_id: numberSchema(
+            "Related goal id, or 0 to create and link a goal for this design"
+          ),
+          design_name: stringSchema("Creative name for the authored design"),
+          footprint_rows: stringArraySchema(
+            "Three to fifteen equal-width rows, each 3-15 characters using only #, ., and D"
+          ),
+          wall_height: numberSchema("Wall height from 3 to 6 blocks")
+        }
+      ),
+      tool(
         "delegate_project",
-        "Start a supported durable multi-stage project. The deterministic compiler owns site selection, materials, steps, coordinates, verification, and retries.",
+        "Start a supported non-house durable project. The deterministic compiler owns site selection, materials, steps, coordinates, verification, and retries.",
         {
           goal_id: numberSchema(
             "Related goal id, or 0 to create and link the default measurable goal"
           ),
-          outcome: enumSchema([...HIGH_LEVEL_PROJECT_KINDS]),
-          scale: enumSchema([...PROJECT_SCALES])
+          outcome: enumSchema([...HIGH_LEVEL_PROJECT_KINDS])
         }
       ),
       tool("cancel_work_order", "Cancel the active deterministic task.", {
@@ -195,8 +207,7 @@ export class PlannerTools {
         const args = z
           .object({
             goal_id: z.number().int().min(0),
-            outcome: z.enum(HIGH_LEVEL_PROJECT_KINDS),
-            scale: z.enum(PROJECT_SCALES)
+            outcome: z.enum(HIGH_LEVEL_PROJECT_KINDS)
           })
           .parse(raw);
         const snapshot = this.sensing.last() ?? this.sensing.observe();
@@ -204,7 +215,6 @@ export class PlannerTools {
           {
             goalId: args.goal_id === 0 ? undefined : args.goal_id,
             kind: args.outcome,
-            scale: args.scale,
             dimension: snapshot.dimension,
             visibleBlocks: snapshot.visibleBlocks.map(({ name, distance }) => ({
               name,
@@ -218,6 +228,39 @@ export class PlannerTools {
           `Started deterministic ${args.outcome} project ${project.id}`,
           project
         );
+      }
+      case "delegate_house_project": {
+        const args = z
+          .object({
+            goal_id: z.number().int().min(0),
+            design_name: z.string().min(1).max(80),
+            footprint_rows: z
+              .array(z.string().regex(/^[.#D]+$/).min(3).max(15))
+              .min(3)
+              .max(15),
+            wall_height: z.number().int().min(3).max(6)
+          })
+          .parse(raw);
+        const design = parseHouseDesign({
+          designName: args.design_name,
+          footprintRows: args.footprint_rows,
+          wallHeight: args.wall_height
+        });
+        const snapshot = this.sensing.last() ?? this.sensing.observe();
+        const project = this.tasks.delegateHouseProject(
+          {
+            goalId: args.goal_id === 0 ? undefined : args.goal_id,
+            design,
+            dimension: snapshot.dimension,
+            visibleBlocks: snapshot.visibleBlocks.map(({ name, distance }) => ({
+              name,
+              distance
+            })),
+            inventory: snapshot.inventory.map(({ name, count }) => ({ name, count }))
+          },
+          "planner"
+        );
+        return ok(`Started planner-authored house project ${project.id}`, project);
       }
       case "cancel_work_order": {
         const { reason } = z
@@ -263,6 +306,16 @@ function numberSchema(description: string): Record<string, unknown> {
 
 function enumSchema(values: string[]): Record<string, unknown> {
   return { type: "string", enum: values };
+}
+
+function stringArraySchema(description: string): Record<string, unknown> {
+  return {
+    type: "array",
+    description,
+    minItems: 3,
+    maxItems: 15,
+    items: { type: "string", pattern: "^[.#D]{3,15}$" }
+  };
 }
 
 function ok(message: string, data?: unknown): ActionResult {
