@@ -33,6 +33,7 @@ const MINIMUM_ESCAPE_MS = 2_000;
 const ESCAPE_QUIET_MS = 4_000;
 const RECOVERY_TIMEOUT_MS = 12_000;
 const POST_ESCAPE_SUPPRESSION_MS = 5_000;
+const DEFEATED_TARGET_SUPPRESSION_MS = 5_000;
 const LOOT_COLLECTION_MS = 8_000;
 const LOOT_SEARCH_RADIUS = 8;
 const COMBAT_LOOT_SESSION = "combat";
@@ -138,6 +139,7 @@ export class CombatSystem {
   private passiveScanSuppressedUntil = 0;
   private shieldRaised = false;
   private playerHits = new Map<string, PlayerHitRecord>();
+  private recentlyDefeated = new Map<number, number>();
   private lootUntil = 0;
   private lootOrigin?: Entity["position"];
 
@@ -231,6 +233,7 @@ export class CombatSystem {
     this.ticking = true;
     try {
       this.expirePlayerHitRecords();
+      this.expireRecentlyDefeated();
       if (this.encounter) {
         this.encounter.minimumHealth = Math.min(
           this.encounter.minimumHealth,
@@ -545,6 +548,10 @@ export class CombatSystem {
 
   private onEntityDead(entity: Entity): void {
     if (entity.id !== this.target?.id) return;
+    this.recentlyDefeated.set(
+      entity.id,
+      Date.now() + DEFEATED_TARGET_SUPPRESSION_MS
+    );
     this.finishEncounter("victory", `${displayEntityName(entity)} was defeated`);
     this.target = undefined;
     if (this.mode === "escaping" || this.mode === "recovering") return;
@@ -770,6 +777,9 @@ export class CombatSystem {
       .visibleEntitiesRaw(MAX_PURSUIT_DISTANCE)
       .filter(isRecognizedHostile)
       .filter(
+        (entity) => (this.recentlyDefeated.get(entity.id) ?? 0) <= Date.now()
+      )
+      .filter(
         (entity) =>
           origin.distanceTo(entity.position) <=
           threatAcquisitionRange(normalizedEntityName(entity))
@@ -843,6 +853,13 @@ export class CombatSystem {
     const cutoff = Date.now() - PLAYER_HIT_WINDOW_MS;
     for (const [key, record] of this.playerHits) {
       if (record.lastHitAt < cutoff) this.playerHits.delete(key);
+    }
+  }
+
+  private expireRecentlyDefeated(): void {
+    const now = Date.now();
+    for (const [entityId, expiresAt] of this.recentlyDefeated) {
+      if (expiresAt <= now) this.recentlyDefeated.delete(entityId);
     }
   }
 }

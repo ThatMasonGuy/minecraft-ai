@@ -454,7 +454,10 @@ describe("enclosed combat movement", () => {
         equipment: () => undefined,
         equip: vi.fn(async () => true)
       } as never,
-      { collectStep: vi.fn(), endSession: vi.fn() } as never,
+      {
+        collectStep: vi.fn(() => ({ status: "clear" })),
+        endSession: vi.fn()
+      } as never,
       {
         snapshot: () => ({
           health: 20,
@@ -484,6 +487,12 @@ describe("enclosed combat movement", () => {
       dangers: [{ position: zombie.position }],
       safeDistance: 4.5
     });
+
+    emitter.emit("entityDead", zombie);
+    expect(combat.currentMode()).toBe("looting");
+    await Promise.resolve();
+    emitter.emit("physicsTick");
+    await vi.waitFor(() => expect(combat.currentMode()).toBe("idle"));
     combat.stop();
   });
 });
