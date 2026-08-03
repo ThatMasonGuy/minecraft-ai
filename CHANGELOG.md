@@ -6,6 +6,8 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Made shared Pathfinder routing strongly prefer dry ground, disabled parkour in surface searches, and expanded escape destinations across nearby elevations so water and uneven terrain no longer collapse evasion into same-level stop/replan loops.
+- Increased escape-route stall tolerance and preserved rejected destinations while temporarily blocked, preventing slow route startup from repeatedly selecting and cancelling the same failed segment.
 - Routed build-site excavation drops through LootingSystem with persisted collection sessions, so site preparation drains mined blocks before continuing instead of abandoning most drops in the cleared area.
 - Made build-site selection terrain-aware across nearby elevations, separated future excavation feasibility from Mineflayer's current five-block reach check, and kept temporarily unavailable site scans active instead of terminally blocking the project; legacy false site blocks now recover automatically.
 - Added an explicit, ledger-tagged operator-only cooldown bypass for deliberate live evaluations while preserving the normal minimum interval for automatic and untagged planner requests.

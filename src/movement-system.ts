@@ -14,9 +14,9 @@ const { GoalBlock, GoalFollow, GoalLookAtBlock, GoalNear, GoalNearXZ, GoalXZ } =
 
 const ESCAPE_RADII = [4, 6, 8, 10, 12];
 const ESCAPE_DIRECTIONS = 16;
-const ESCAPE_STALL_MS = 1_500;
+const ESCAPE_STALL_MS = 4_000;
 const ESCAPE_PROGRESS_DISTANCE = 0.75;
-const ESCAPE_REJECT_MS = 5_000;
+const ESCAPE_REJECT_MS = 15_000;
 const ESCAPE_GOAL_REACHED_DISTANCE = 1.5;
 const ESCAPE_GOAL_ADVANTAGE = 0.5;
 const HAZARDOUS_FEET_BLOCKS = new Set([
@@ -124,11 +124,7 @@ export class PathfinderMovementSystem implements MovementSystem {
 
   configureBase(): void {
     const movements = new Movements(this.bot);
-    movements.canDig = false;
-    movements.canOpenDoors = true;
-    movements.allow1by1towers = false;
-    movements.allowParkour = false;
-    movements.allowSprinting = true;
+    configureGroundMovements(movements);
     this.bot.pathfinder.setMovements(movements);
   }
 
@@ -214,10 +210,7 @@ export class PathfinderMovementSystem implements MovementSystem {
     const target = new Vec3(position.x, position.y, position.z);
     const previousMovements = this.bot.pathfinder.movements;
     const movements = new Movements(this.bot);
-    movements.canDig = false;
-    movements.canOpenDoors = true;
-    movements.allow1by1towers = false;
-    movements.allowParkour = false;
+    configureGroundMovements(movements);
     movements.allowSprinting = false;
     this.hold();
     this.bot.pathfinder.setMovements(movements);
@@ -281,11 +274,7 @@ export class PathfinderMovementSystem implements MovementSystem {
   ): Promise<NavigationResult> {
     const previousMovements = this.bot.pathfinder.movements;
     const movements = new Movements(this.bot);
-    movements.canDig = false;
-    movements.canOpenDoors = true;
-    movements.allow1by1towers = false;
-    movements.allowParkour = true;
-    movements.allowSprinting = true;
+    configureGroundMovements(movements);
     this.bot.pathfinder.setMovements(movements);
 
     const startedAt = Date.now();
@@ -415,7 +404,10 @@ export class PathfinderMovementSystem implements MovementSystem {
         this.isSafeDestination(candidate)
     );
     if (!destination) {
-      this.hold();
+      this.bot.pathfinder.setGoal(null);
+      this.bot.clearControlStates();
+      this.mode = "escape";
+      this.targetKey = undefined;
       return {
         status: "blocked",
         detail: "No loaded, passable escape destination increased threat separation"
@@ -596,26 +588,52 @@ export function selectEscapeDestination(
   for (const radius of ESCAPE_RADII) {
     for (let index = 0; index < ESCAPE_DIRECTIONS; index += 1) {
       const angle = (index / ESCAPE_DIRECTIONS) * Math.PI * 2;
-      const position = {
+      const horizontal = {
         x: Math.round(start.x + Math.cos(angle) * radius),
-        y: start.y,
         z: Math.round(start.z + Math.sin(angle) * radius)
       };
-      if (!isSafe(position)) continue;
-      const distances = dangers.map((danger) =>
-        distance(position, danger.position)
-      );
-      const minimum = Math.min(...distances);
-      if (minimum <= currentMinimum + 0.5) continue;
-      const average = distances.reduce((sum, value) => sum + value, 0) / distances.length;
-      candidates.push({
-        position,
-        score: minimum * 10 + average - distance(start, position) * 0.05
-      });
+      for (const yOffset of escapeCandidateYOffsets()) {
+        const position = { ...horizontal, y: start.y + yOffset };
+        if (!isSafe(position)) continue;
+        const distances = dangers.map((danger) =>
+          distance(position, danger.position)
+        );
+        const minimum = Math.min(...distances);
+        if (minimum <= currentMinimum + 0.5) continue;
+        const average = distances.reduce((sum, value) => sum + value, 0) / distances.length;
+        candidates.push({
+          position,
+          score:
+            minimum * 10 +
+            average -
+            horizontalDistance(start, position) * 0.05 -
+            Math.abs(yOffset) * 0.2
+        });
+        break;
+      }
     }
   }
 
   return candidates.sort((a, b) => b.score - a.score)[0]?.position;
+}
+
+export function escapeCandidateYOffsets(maxOffset = 6): number[] {
+  const offsets = [0];
+  for (let offset = 1; offset <= maxOffset; offset += 1) {
+    offsets.push(offset, -offset);
+  }
+  return offsets;
+}
+
+function configureGroundMovements(movements: InstanceType<typeof Movements>): void {
+  movements.canDig = false;
+  movements.canOpenDoors = true;
+  movements.allow1by1towers = false;
+  movements.allowParkour = false;
+  movements.allowSprinting = true;
+  // Water remains traversable, but dry routes and prompt shore exits are
+  // strongly preferred over repeated short swims and direction reversals.
+  (movements as InstanceType<typeof Movements> & { liquidCost: number }).liquidCost = 8;
 }
 
 function minimumDangerDistance(

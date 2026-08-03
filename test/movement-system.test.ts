@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Vec3 } from "vec3";
 import {
+  escapeCandidateYOffsets,
   PathfinderMovementSystem,
   selectEscapeDestination
 } from "../src/movement-system.js";
@@ -43,6 +44,18 @@ describe("movement escape routing", () => {
     ).toBeUndefined();
   });
 
+  it("finds a dry escape landing above the current water level", () => {
+    const destination = selectEscapeDestination(
+      { x: 0, y: 62, z: 0 },
+      [{ position: { x: 2, y: 62, z: 0 } }],
+      (position) => position.y === 64
+    );
+
+    expect(destination).toMatchObject({ y: 64 });
+    expect(destination!.x).toBeLessThan(0);
+    expect(escapeCandidateYOffsets(2)).toEqual([0, 1, -1, 2, -2]);
+  });
+
   it("abandons an escape destination that makes no positional progress", () => {
     vi.useFakeTimers();
     try {
@@ -70,7 +83,7 @@ describe("movement escape routing", () => {
 
       const first = movement.escape(request);
       expect(first.status).toBe("moving");
-      vi.advanceTimersByTime(1_501);
+      vi.advanceTimersByTime(4_001);
       const second = movement.escape(request);
 
       expect(second.status).toBe("moving");
