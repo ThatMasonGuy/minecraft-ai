@@ -181,6 +181,7 @@ export class MinecraftRuntime {
         model: config.openaiModel,
         reasoningEffort: config.reasoningEffort,
         plannerMode: config.plannerMode,
+        toolMode: config.plannerToolMode,
         webSearchEnabled: config.webSearchEnabled,
         tickMs: config.tickMs,
         maxToolRounds: config.maxToolRounds,
@@ -200,6 +201,7 @@ export class MinecraftRuntime {
               .reduce((total, item) => total + item.count, 0),
           requestPlanning: (task) => this.agent?.wake(task),
           plannerMode: config.plannerMode,
+          toolMode: config.plannerToolMode,
           model: config.openaiModel
         });
         try {
@@ -272,7 +274,8 @@ export class MinecraftRuntime {
         `[planner] Mode ${config.plannerMode}` +
           (config.plannerMode === "manual"
             ? "; automatic model wakeups disabled; use !plan <task>"
-            : `; scheduled reflection every ${config.tickMs}ms`)
+            : `; scheduled reflection every ${config.tickMs}ms`) +
+          `; tools ${config.plannerToolMode}`
       );
       this.agent.start();
       this.workExecutor.start();

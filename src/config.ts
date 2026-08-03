@@ -18,7 +18,8 @@ const schema = z.object({
     .enum(["none", "low", "medium", "high", "xhigh"])
     .default("low"),
   PLANNER_MODE: z.enum(PLANNER_MODES).default("manual"),
-  WEB_SEARCH_ENABLED: booleanFromString(true),
+  PLANNER_TOOL_MODE: z.enum(["dry_run", "execute"]).default("dry_run"),
+  WEB_SEARCH_ENABLED: booleanFromString(false),
   MC_HOST: z.string().default("localhost"),
   MC_PORT: z.coerce.number().int().min(1).max(65535).default(25565),
   MC_USERNAME: z.string().min(1).default("minecraft-ai"),
@@ -52,6 +53,7 @@ export const config = {
   openaiModel: parsed.OPENAI_MODEL,
   reasoningEffort: parsed.OPENAI_REASONING_EFFORT,
   plannerMode: parsed.PLANNER_MODE,
+  plannerToolMode: parsed.PLANNER_TOOL_MODE,
   webSearchEnabled: parsed.WEB_SEARCH_ENABLED,
   minecraft: {
     host: parsed.MC_HOST,

@@ -24,8 +24,9 @@ describe("planner mode", () => {
         apiKey: "test-key-that-is-long-enough",
         model: "test-model",
         reasoningEffort: "low",
-        plannerMode: "manual",
-        webSearchEnabled: false,
+      plannerMode: "manual",
+      toolMode: "dry_run",
+      webSearchEnabled: false,
         tickMs: 900_000,
         maxToolRounds: 1,
         maxOutputTokens: 64,
@@ -42,7 +43,8 @@ describe("planner mode", () => {
     expect(onActivity).toHaveBeenCalledWith({
       phase: "idle",
       label: "Manual planning mode",
-      detail: "Automatic model wakeups are disabled; use !plan <task>"
+      detail:
+        "Automatic model wakeups are disabled; use !plan <task>; tools: dry_run"
     });
     agent.stop();
   });

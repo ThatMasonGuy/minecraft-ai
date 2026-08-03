@@ -43,6 +43,9 @@ MC_USERNAME=minecraft-ai
 MC_AUTH=microsoft
 MC_VERSION=1.21.4
 OPENAI_MODEL=gpt-5.6-luna
+PLANNER_MODE=manual
+PLANNER_TOOL_MODE=dry_run
+WEB_SEARCH_ENABLED=false
 VIEWER_ENABLED=true
 VIEWER_PORT=3007
 VIEWER_DISTANCE=3
@@ -90,7 +93,7 @@ The planner remains a separate, visibly paid path. Use this only for a deliberat
 npm run operator -- plan "Create one bounded task to test tool selection"
 ```
 
-The CLI prints a paid-call warning, and the endpoint rejects planning while deterministic work is active. Depending on `MAX_TOOL_ROUNDS`, one request can include the initial call plus tool-result continuations. The control API binds to loopback by default. Compose exposes it only at `127.0.0.1:3008`; do not publish it to an untrusted network.
+The CLI prints a paid-call warning, and the endpoint rejects planning while deterministic work is active. The development default is `PLANNER_TOOL_MODE=dry_run`: one API request is made, proposed tools and arguments are recorded, and nothing is executed or continued. Set `PLANNER_TOOL_MODE=execute` only when tool execution is deliberately part of the test; execute mode may make the initial request plus up to `MAX_TOOL_ROUNDS` continuations. The control API binds to loopback by default. Compose exposes it only at `127.0.0.1:3008`; do not publish it to an untrusted network.
 
 ## Run continuously with Docker
 
@@ -142,11 +145,11 @@ Observation payloads retain the exact bounded snapshot supplied to the model. Th
 
 ## Autonomy and cost
 
-The planner uses `gpt-5.6-luna`, the cost-sensitive GPT-5.6 tier for high-volume workloads, while retaining Responses API function calling and web search. The existing `low` reasoning effort is preserved as the migration baseline. `PLANNER_MODE=manual` is the default for development: startup, scheduled reflection, ordinary chat, dangerous vitals, and executor events do not wake the model. Send `!plan <task>` in chat or a whisper to request one deliberate planning turn. Deterministic projects, work orders, recovery, storage, and safety behavior continue without scheduled model calls.
+The planner uses `gpt-5.6-luna`, the cost-sensitive GPT-5.6 tier for high-volume workloads, while retaining Responses API function calling and optional web search. The existing `low` reasoning effort is preserved as the migration baseline. `PLANNER_MODE=manual` and `PLANNER_TOOL_MODE=dry_run` are the development defaults: startup, scheduled reflection, ordinary chat, dangerous vitals, and executor events do not wake the model; an explicit request records proposed tools without executing them. Send `!plan <task>` in chat, a whisper, or the operator CLI to request one deliberate planning turn. Deterministic projects, work orders, recovery, storage, and safety behavior continue without scheduled model calls.
 
-Set `PLANNER_MODE=automatic` only for an intentional autonomous run. Automatic mode preserves the existing startup, chat, vitals, executor, and scheduled wakeups; scheduled reflection defaults to once every 90 minutes through `AGENT_TICK_MS=5400000`, with up to two tool continuations.
+Set both `PLANNER_MODE=automatic` and `PLANNER_TOOL_MODE=execute` only for an intentional autonomous run. Automatic mode preserves the existing startup, chat, vitals, executor, and scheduled wakeups; scheduled reflection defaults to once every 90 minutes through `AGENT_TICK_MS=5400000`, with up to two tool continuations.
 
-The agent records exact API usage and checks a rolling 24-hour budget before every model call. By default, it stops spending at 850,000 processed tokens, reserving 150,000 tokens beneath the 1,000,000-token daily target for request-size variance. Configure this with `PLANNER_MODE`, `DAILY_TOKEN_BUDGET`, `DAILY_TOKEN_RESERVE`, `MAX_OUTPUT_TOKENS`, `AGENT_TICK_MS`, and `MAX_TOOL_ROUNDS`. Web search is available only when `WEB_SEARCH_ENABLED=true` and is billed when used.
+The agent records exact API usage and checks a rolling 24-hour budget before every model call. By default, it stops spending at 850,000 processed tokens, reserving 150,000 tokens beneath the 1,000,000-token daily target for request-size variance. Configure this with `PLANNER_MODE`, `PLANNER_TOOL_MODE`, `DAILY_TOKEN_BUDGET`, `DAILY_TOKEN_RESERVE`, `MAX_OUTPUT_TOKENS`, `AGENT_TICK_MS`, and `MAX_TOOL_ROUNDS`. Web search is disabled by default; it is available only when `WEB_SEARCH_ENABLED=true` and is billed when used.
 
 API attempts are also written to an append-only SQLite ledger with requested and returned model identifiers, response IDs, phase and trigger, latency, status, all reported token dimensions, raw usage JSON, web-search calls, and immutable estimated cost. Price versions are effective-dated so later price changes do not rewrite historical estimates. Reports aggregate lifetime, Brisbane calendar day, model, and phase totals while keeping incomplete historical pricing explicitly unknown.
 

@@ -15,6 +15,7 @@ describe("operator HTTP API", () => {
       inventoryCount: () => 3,
       requestPlanning: () => undefined,
       plannerMode: "manual",
+      toolMode: "dry_run",
       model: "gpt-5.6-luna"
     });
     const server = await startOperatorServer({

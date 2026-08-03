@@ -43,6 +43,7 @@ export interface OperatorControlOptions {
   inventoryCount: (itemName: string) => number;
   requestPlanning: (task: string) => void;
   plannerMode: "manual" | "automatic";
+  toolMode: "dry_run" | "execute";
   model: string;
 }
 
@@ -52,6 +53,7 @@ export class OperatorControl {
   status(): object {
     return {
       plannerMode: this.options.plannerMode,
+      toolMode: this.options.toolMode,
       model: this.options.model,
       activeWorkOrder: this.options.memory.activeWorkOrder() ?? null,
       activeProject: this.options.memory.activeProject() ?? null
@@ -157,7 +159,10 @@ export class OperatorControl {
     return {
       accepted: true,
       paid: true,
-      note: "The request may use one initial API call plus configured tool continuations."
+      note:
+        this.options.toolMode === "dry_run"
+          ? "Dry-run mode uses one API request and records proposals without executing tools."
+          : "Execute mode may use one initial API call plus configured tool continuations."
     };
   }
 }

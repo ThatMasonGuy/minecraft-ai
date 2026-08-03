@@ -18,5 +18,6 @@ All notable changes to this project are recorded in this file.
 ### Changed
 
 - Changed the planner model from `gpt-5.4-mini` to `gpt-5.6-luna` while preserving Responses API tools and low reasoning effort.
+- Changed development planning to dry-run proposed tools by default, preventing action execution and paid continuations during prompt or task-generation tests; hosted web search is now opt-in.
 - Extended API usage events to record both requested and returned model identifiers plus reasoning effort.
 - Forced planner requests onto standard processing so recorded Luna estimates use an explicit service tier rather than an account-dependent default.

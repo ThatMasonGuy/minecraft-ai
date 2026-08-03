@@ -173,6 +173,7 @@ function createControl(
     inventoryCount,
     requestPlanning,
     plannerMode: "manual",
+    toolMode: "dry_run",
     model: "gpt-5.6-luna"
   });
   return { control, memory };

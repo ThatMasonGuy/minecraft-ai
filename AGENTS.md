@@ -15,6 +15,7 @@ Development mode is the default whenever Codex is changing, debugging, or locall
 - Keep deterministic executors running when useful. Disabling scheduled model calls must not disable already-persisted work orders, projects, recovery, storage, or safety behavior.
 - During development, Codex or the user should give the Minecraft agent explicit high-level tasks through a supported interface. The resulting deterministic work must continue without repeated model involvement wherever the architecture supports it.
 - Manual, one-off API calls are allowed when deliberately testing planning, task generation, prompts, schemas, tool selection, or rules around generated tasks.
+- Keep planner tools in `dry_run` mode when the test concerns task generation or tool selection. Enable tool execution only when executing the proposed action or persisting the proposed task is itself inside the declared test boundary.
 - Startup, scheduled, chat, vitals, completion, and error wakeups must not cause surprise API spending in development mode. Only the trigger being deliberately tested may invoke the model.
 - Before an intentional model call, state the behavior under test and its pass condition. Use the smallest useful number of calls and inspect recorded token usage afterward.
 - Do not re-enable autonomous scheduled planning after a development session unless the user explicitly asks for an autonomous evaluation or live run.

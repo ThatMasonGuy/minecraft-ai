@@ -19,6 +19,7 @@ interface AgentOptions {
   model: string;
   reasoningEffort: "none" | "low" | "medium" | "high" | "xhigh";
   plannerMode: PlannerMode;
+  toolMode: "dry_run" | "execute";
   webSearchEnabled: boolean;
   tickMs: number;
   maxToolRounds: number;
@@ -67,7 +68,7 @@ export class AutonomousAgent {
       this.reportActivity(
         "idle",
         "Manual planning mode",
-        "Automatic model wakeups are disabled; use !plan <task>"
+        `Automatic model wakeups are disabled; use !plan <task>; tools: ${this.options.toolMode}`
       );
       return;
     }
@@ -203,6 +204,45 @@ export class AutonomousAgent {
       "initial decision",
       reason
     );
+
+    if (this.options.toolMode === "dry_run") {
+      const calls = response.output.filter(
+        (item): item is typeof item & FunctionCall => item.type === "function_call"
+      );
+      const proposals = calls.map((call) => ({
+        name: call.name,
+        arguments: parseToolArguments(call.arguments)
+      }));
+      this.memory.record({
+        kind: "planner_dry_run",
+        summary:
+          proposals.length > 0
+            ? `Planner dry run proposed: ${proposals.map((call) => call.name).join(", ")}`
+            : `Planner dry run returned text without a tool proposal: ${response.output_text
+                .trim()
+                .slice(0, 300)}`,
+        payload: {
+          responseId: response.id,
+          requestedModel: this.options.model,
+          proposals,
+          text: response.output_text.trim()
+        },
+        position: snapshot.position,
+        dimension: snapshot.dimension,
+        importance: 7
+      });
+      console.log(
+        proposals.length > 0
+          ? `[planner] Dry run proposed ${proposals.map((call) => call.name).join(", ")}; no tools executed`
+          : "[planner] Dry run returned no tool proposal; no tools executed"
+      );
+      this.reportActivity(
+        "idle",
+        "Planner dry run complete",
+        "No proposed tools were executed"
+      );
+      return;
+    }
 
     for (let round = 0; round < this.options.maxToolRounds; round += 1) {
       const calls = response.output.filter(
@@ -579,6 +619,14 @@ Keep internal reflections concise. Put player-facing communication through speak
 
 function formatPosition(position: { x: number; y: number; z: number }): string {
   return `${position.x}, ${position.y}, ${position.z}`;
+}
+
+function parseToolArguments(argumentsJson: string): unknown {
+  try {
+    return JSON.parse(argumentsJson) as unknown;
+  } catch {
+    return { invalidJson: argumentsJson };
+  }
 }
 
 function normalizeApiUsageStatus(
