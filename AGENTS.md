@@ -60,6 +60,20 @@ Every live-game test should follow this loop:
 
 If Codex notices that it is spending time helping the character play rather than improving or evaluating the system, stop the gameplay activity and return to diagnosis and implementation.
 
+## Targeted validation
+
+Validation should reduce meaningful uncertainty about the change being made. Do not repeatedly test unrelated behavior merely because a broader test exists.
+
+- Identify the code paths, contracts, and failure modes affected by the current change, then run the smallest test or check that provides credible evidence for them.
+- Do not rerun an unchanged capability because another subsystem changed. For example, adding or changing death recovery does not require revalidating block placement unless the placement path, shared movement ownership, inventory restoration, or another relevant dependency was affected.
+- Reuse fresh validation evidence from the current development session or checkpoint when the tested code and its dependencies have not changed.
+- Documentation and operating-policy-only changes normally need content review and `git diff --check`, not TypeScript compilation, the full unit suite, a viewer build, or live Minecraft testing.
+- Run focused unit tests before broader suites. Expand validation only when the focused result exposes uncertainty, the change is cross-cutting, shared infrastructure changed, or a regression would be difficult to detect locally.
+- Reserve the full check/test/build sequence for changes that span multiple runtime layers, alter shared contracts or build configuration, prepare a major push/release, or when the user explicitly requests it.
+- Live Minecraft tests must name the exact capability under test and stop after sufficient pass/fail evidence is collected. Do not replay previously proven gameplay sequences without a relevant regression risk.
+- Do not make paid model calls as routine smoke tests. Invoke the API only when model access, prompting, planning, tool selection, usage accounting, or another model-dependent contract is specifically under test.
+- Stop testing when the relevant risk is covered. More repetitions are not inherently stronger evidence.
+
 ## Git checkpointing
 
 Treat local Git commits as frequent rollback checkpoints, not only as declarations that a feature is complete.
@@ -73,6 +87,13 @@ Treat local Git commits as frequent rollback checkpoints, not only as declaratio
 - Create an additional checkpoint before a risky refactor, schema migration, destructive maintenance operation, or extended autonomous evaluation when there are uncommitted changes worth preserving.
 - Do not rewrite, squash, amend, reset, or discard checkpoint history unless the user explicitly asks.
 - A local checkpoint does not imply a GitHub push. Do not push routine checkpoints. Push after a major integrated change or during wrap-up/cleanup only when the user asks or clearly authorizes it.
+
+## Attribution
+
+- Never credit AI, Codex, ChatGPT, OpenAI, a model, or an automated agent as the author or creator of project work.
+- Do not add AI co-author trailers, `Generated-by` notices, badges, acknowledgements, commit-message credit, release-note credit, source comments, or public-facing AI attribution.
+- Use the repository's normal human author identity and project/team voice. When attribution is required, credit the user, project, or human team as appropriate.
+- Describe tools and model behavior only when technically relevant to operating or debugging the Minecraft agent, not as authorship credit.
 
 ## Completion and reporting
 
