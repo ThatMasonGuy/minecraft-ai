@@ -16,10 +16,10 @@ Status meanings:
 | Work-order storage and resume | Verified | Fill available inventory during one gather order, deposit the target item into known owned storage, and resume the same order. | Local Paper integration checkpoint `25be189` |
 | Explicit Pathfinder ownership | Verified | Run the focused executor arbitration tests and confirm an active work order prevents competing project movement. | Unit coverage and checkpoint `25be189` |
 | Manual planner mode | Verified | Start `AutonomousAgent` in manual mode and confirm startup and automatic wake requests do not schedule a model turn. | `test/planner-mode.test.ts`, checkpoint `03d3f99` |
-| Planner tool dry-run | Unverified | Make one explicit manual request, confirm a structured tool proposal is persisted, and confirm no action execution or continuation request occurs. | Implementation and static validation only; live Luna evidence pending |
-| GPT-5.6 Luna planner compatibility | Unverified | Make one explicit manual planning request; confirm Responses API access, one valid tool path, returned model identity, and recorded usage. | Configuration only; no paid request made yet |
+| Planner tool dry-run | Verified | Make one explicit manual request, confirm a structured tool proposal is persisted, and confirm no action execution or continuation request occurs. | Live manual dry run on 2026-08-03; `wait({ seconds: 1 })` persisted with no `[action]` log or second request |
+| GPT-5.6 Luna planner compatibility | Verified | Make one explicit manual planning request; confirm Responses API access, one valid tool path, returned model identity, and recorded usage. | Live manual dry run on 2026-08-03; one completed Luna request and one valid `wait` proposal |
 | Rolling API token budget | Verified | Insert usage either side of the rolling boundary and confirm spend and resume calculations include only the active 24-hour window. | `test/memory.test.ts` and prior live budget checkpoint |
-| Permanent usage and cost ledger | Partial | Record mixed-model calls exactly once and reproduce daily/lifetime/model/phase totals using historical price versions. | Focused accounting, memory, operator-report, and snapshot/restore tests; provider reconciliation and live evidence remain |
+| Permanent usage and cost ledger | Partial | Record mixed-model calls exactly once and reproduce daily/lifetime/model/phase totals using historical price versions. | Focused accounting, operator-report, snapshot/restore, and live Luna evidence; provider-billing reconciliation remains |
 | Zero-cost operator task submission | Verified | Submit a validated work order through the running process, confirm no API usage delta, and identify the resulting task as operator-issued. | `test/operator-control.test.ts`; focused validation after operator API implementation |
 | Test-world snapshot and restore | Verified | Snapshot stopped test state, mutate world and agent data, restore checksummed state, preserve current auth, and retain post-snapshot API ledger history. | `test/world-state.test.ts`; focused snapshot/accounting validation |
 | First-person viewer and inventory HUD | Verified | Connect the bot and confirm live first-person world state, full inventory, equipment, hotbar, and planner/work status render. | Viewer checkpoint `25be189` |
@@ -37,3 +37,15 @@ Status meanings:
 - Do not upgrade **Partial** or **Unverified** to **Verified** from unit tests when the completion contract explicitly requires live behavior.
 - Do not downgrade still-applicable evidence merely because unrelated code changed.
 - Operator-issued tasks and test setup are evidence inputs, not autonomous accomplishments.
+
+## Evidence log
+
+### 2026-08-03 — GPT-5.6 Luna single-request dry run
+
+- Preconditions: planner `manual`, tools `dry_run`, web search disabled, no active work order or project.
+- Trigger: one explicit operator request to propose exactly `wait({ seconds: 1 })` and make no other change.
+- Result: requested and returned model `gpt-5.6-luna`, standard service tier, completed status, and exactly one persisted tool proposal with the requested argument.
+- Isolation: no tool was executed, no tool-result continuation was requested, no web search ran, and the stack was stopped after evidence collection.
+- Ledger delta: one call; 7,625 input tokens, 7,622 cache-write tokens, 32 output tokens including 13 reasoning tokens, 7,657 total tokens, and zero hosted-tool calls.
+- Estimated cost: 1,945 USD micro-dollars (`$0.001945`) using the effective-dated Luna standard price record.
+- Classification: model-proposed dry-run evidence only; no gameplay or autonomous accomplishment occurred.
