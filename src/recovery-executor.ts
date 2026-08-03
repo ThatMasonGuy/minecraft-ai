@@ -14,6 +14,7 @@ import type { SensingSystem } from "./perception.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { LootingSystem } from "./looting-system.js";
 import type { MiningSystem } from "./mining-system.js";
+import type { StorageSystem } from "./storage-system.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -55,6 +56,7 @@ export class RecoveryExecutor {
     private readonly inventory: InventorySystem,
     private readonly looting: LootingSystem,
     private readonly mining: MiningSystem,
+    private readonly storage: StorageSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -278,20 +280,11 @@ export class RecoveryExecutor {
       "Preparing recovery loadout",
       `Retrieving ${itemName.replaceAll("_", " ")} from owned storage`
     );
-    const result = await this.actions.execute(
-      "withdraw_item_from_container",
-      {
-        x: container.position.x,
-        y: container.position.y,
-        z: container.position.z,
-        item_name: itemName,
-        count: 1
-      }
-    );
-    if (!result.ok) {
-      console.warn(`[recovery] Loadout unavailable: ${result.message}`);
+    const result = await this.storage.withdraw(container.position, itemName, 1);
+    if (result.status === "blocked") {
+      console.warn(`[recovery] Loadout unavailable: ${result.detail}`);
     }
-    return result.ok;
+    return result.status === "retrieved";
   }
 
   private hasRecoveryWeaponAvailable(

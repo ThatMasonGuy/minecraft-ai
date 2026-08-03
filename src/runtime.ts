@@ -31,7 +31,7 @@ import {
   RecoveryExecutor,
   shouldRecoverInventory
 } from "./recovery-executor.js";
-import { StorageExecutor } from "./storage-executor.js";
+import { MineflayerStorageSystem, type StorageSystem } from "./storage-system.js";
 import { startViewerServer, type ViewerServer } from "./viewer-server.js";
 import { ViewerStatusStore } from "./viewer-status.js";
 import { WorkExecutor } from "./work-executor.js";
@@ -51,7 +51,7 @@ export class MinecraftRuntime {
   private workExecutor?: WorkExecutor;
   private projectExecutor?: ProjectExecutor;
   private recoveryExecutor?: RecoveryExecutor;
-  private storageExecutor?: StorageExecutor;
+  private storageSystem?: StorageSystem;
   private executionCoordinator?: ExecutionCoordinator;
   private inventorySystem?: InventorySystem;
   private reconnectTimer?: NodeJS.Timeout;
@@ -77,7 +77,7 @@ export class MinecraftRuntime {
     this.workExecutor?.stop();
     this.projectExecutor?.stop();
     this.recoveryExecutor?.stop();
-    this.storageExecutor?.stop();
+    this.storageSystem?.stop();
     this.executionCoordinator?.dispose();
     this.executionCoordinator = undefined;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -211,6 +211,22 @@ export class MinecraftRuntime {
         detail: `Playing as ${bot.username}`
       });
 
+      const storageSystem = new MineflayerStorageSystem(
+        bot,
+        this.memory,
+        perception,
+        movementSystem,
+        inventorySystem,
+        (activity) => this.viewerStatus.setWork(activity),
+        () =>
+          (this.combatSystem?.isActive() ?? false) ||
+          (this.recoveryExecutor?.isActive() ?? false),
+        executionCoordinator.scope(
+          "storage",
+          () => this.storageSystem?.isActive() ?? false
+        )
+      );
+      this.storageSystem = storageSystem;
       const actions = new MinecraftActions(
         bot,
         this.memory,
@@ -220,6 +236,7 @@ export class MinecraftRuntime {
         miningSystem,
         buildingSystem,
         productionSystem,
+        storageSystem,
         config.maxMoveDistance
       );
       this.recoveryExecutor = new RecoveryExecutor(
@@ -231,6 +248,7 @@ export class MinecraftRuntime {
         inventorySystem,
         lootingSystem,
         miningSystem,
+        storageSystem,
         (activity) => this.viewerStatus.setWork(activity),
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
@@ -239,22 +257,7 @@ export class MinecraftRuntime {
         )
       );
       this.recoveryExecutor.start();
-      this.storageExecutor = new StorageExecutor(
-        bot,
-        this.memory,
-        actions,
-        movementSystem,
-        inventorySystem,
-        (activity) => this.viewerStatus.setWork(activity),
-        () =>
-          (this.combatSystem?.isActive() ?? false) ||
-          (this.recoveryExecutor?.isActive() ?? false),
-        executionCoordinator.scope(
-          "storage",
-          () => this.storageExecutor?.isActive() ?? false
-        )
-      );
-      this.storageExecutor.start();
+      storageSystem.start();
       this.agent = new AutonomousAgent(this.memory, perception, actions, {
         apiKey: config.openaiApiKey,
         model: config.openaiModel,
@@ -304,6 +307,7 @@ export class MinecraftRuntime {
         this.memory,
         perception,
         actions,
+        storageSystem,
         config.workExecutorTickMs,
         (reason) =>
           this.agent?.wakeAutomatically(reason, {
@@ -314,7 +318,7 @@ export class MinecraftRuntime {
         (activity) => {
           if (
             !this.recoveryExecutor?.isActive() &&
-            !this.storageExecutor?.isActive() &&
+            !this.storageSystem?.isActive() &&
             (activity.phase !== "idle" || !this.memory.activeProject())
           ) {
             this.viewerStatus.setWork(activity);
@@ -323,7 +327,7 @@ export class MinecraftRuntime {
         () =>
           (this.combatSystem?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false) ||
-          (this.storageExecutor?.isActive() ?? false),
+          (this.storageSystem?.isActive() ?? false),
         executionCoordinator.scope(
           "work",
           () => this.memory.activeWorkOrder() !== undefined
@@ -339,11 +343,12 @@ export class MinecraftRuntime {
         miningSystem,
         buildingSystem,
         productionSystem,
+        storageSystem,
         config.workExecutorTickMs,
         (activity) => {
           if (
             !this.recoveryExecutor?.isActive() &&
-            !this.storageExecutor?.isActive()
+            !this.storageSystem?.isActive()
           ) {
             this.viewerStatus.setWork(activity);
           }
@@ -351,7 +356,7 @@ export class MinecraftRuntime {
         () =>
           (this.combatSystem?.isActive() ?? false) ||
           (this.recoveryExecutor?.isActive() ?? false) ||
-          (this.storageExecutor?.isActive() ?? false),
+          (this.storageSystem?.isActive() ?? false),
         executionCoordinator.scope(
           "project",
           () => this.memory.activeProject() !== undefined
@@ -579,14 +584,14 @@ export class MinecraftRuntime {
       this.workExecutor?.stop();
       this.projectExecutor?.stop();
       this.recoveryExecutor?.stop();
-      this.storageExecutor?.stop();
+      this.storageSystem?.stop();
       this.executionCoordinator?.dispose();
       this.agent = undefined;
       this.combatSystem = undefined;
       this.workExecutor = undefined;
       this.projectExecutor = undefined;
       this.recoveryExecutor = undefined;
-      this.storageExecutor = undefined;
+      this.storageSystem = undefined;
       this.executionCoordinator = undefined;
       const operator = this.operator;
       this.operator = undefined;

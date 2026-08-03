@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Replaced the storage executor/action inversion with StorageSystem, which now owns proactive inventory-pressure storage, container selection, deposits, owned-container withdrawals, transfer verification, and persistent container accounting.
 - Extracted recipe resolution, bounded crafting, crafting-table interaction, furnace loading, fuel policy, output collection, and production outcomes into ProductionSystem; actions and project workflows no longer call Mineflayer crafting or furnace primitives.
 - Extracted blueprint placement, support selection, utility-block placement, traversal scaffolding, stair landings, material checks, retries, and placement verification into BuildingSystem; movement, actions, and project workflows no longer place blocks directly.
 - Extracted block safety classification, tool-tier selection, dig retries/timeouts, protected-block rules, falling-block clearance, exact-cell excavation, and collection positioning into MiningSystem; actions, projects, and recovery no longer dig directly.
@@ -24,6 +25,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added storage transfer and ownership coverage plus enforcement against direct container access outside StorageSystem.
 - Added production recipe and unavailable-material coverage plus enforcement against crafting or furnace access outside ProductionSystem.
 - Added building placement and missing-material coverage plus enforcement against block placement outside BuildingSystem.
 - Added mining authority coverage and enforcement that rejects digging or diggability logic outside MiningSystem.

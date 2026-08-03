@@ -21,6 +21,7 @@ import type { InventorySystem } from "./inventory-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
+import type { StorageSystem } from "./storage-system.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
@@ -90,6 +91,7 @@ export class ProjectExecutor {
     private readonly mining: MiningSystem,
     private readonly building: BuildingSystem,
     private readonly production: ProductionSystem,
+    private readonly storage: StorageSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -1716,17 +1718,9 @@ export class ProjectExecutor {
       );
       return;
     }
-    const result = await this.actions.execute(
-      "deposit_item_in_container",
-      {
-        x: position.x,
-        y: position.y,
-        z: position.z,
-        item_name: spec.itemName
-      }
-    );
-    if (!result.ok) {
-      throw new Error(result.message);
+    const result = await this.storage.deposit(position, spec.itemName);
+    if (result.status === "blocked") {
+      throw new Error(result.detail);
     }
     const deposited = Math.max(
       0,

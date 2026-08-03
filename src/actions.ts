@@ -15,6 +15,7 @@ import type { InventorySystem } from "./inventory-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
+import type { StorageSystem } from "./storage-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -37,6 +38,7 @@ export class MinecraftActions {
     private readonly mining: MiningSystem,
     private readonly building: BuildingSystem,
     private readonly production: ProductionSystem,
+    private readonly storage: StorageSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -693,39 +695,13 @@ export class MinecraftActions {
         item_name: z.string().min(1)
       })
       .parse(raw);
-    const visible = this.perception.inspectVisibleBlock(args.x, args.y, args.z);
-    if (!visible || !isStorageBlock(visible.name)) {
-      return fail("The storage container is not currently visible");
-    }
-    const stacks = this.inventory
-      .items()
-      .filter((item) => item.name === args.item_name);
-    if (stacks.length === 0) return ok(`No ${args.item_name} to deposit`);
-
-    const position = new Vec3(args.x, args.y, args.z);
-    await this.movement.positionForBlock(args);
-    const block = this.perception.blockAt(position);
-    if (!block || !isStorageBlock(block.name) || !this.perception.canSeeBlock(block)) {
-      return fail("The storage container is no longer visible");
-    }
-
-    const container = await this.bot.openContainer(block);
-    const variants = new Map<string, { type: number; metadata: number | null }>();
-    for (const stack of stacks) {
-      variants.set(`${stack.type}:${stack.metadata}`, {
-        type: stack.type,
-        metadata: stack.metadata
-      });
-    }
-    try {
-      for (const variant of variants.values()) {
-        await container.deposit(variant.type, variant.metadata, null);
-      }
-    } finally {
-      container.close();
+    const result = await this.storage.deposit(args, args.item_name, true);
+    if (result.status === "blocked") return fail(result.detail);
+    if (result.status === "nothing_to_store") {
+      return ok(`No ${args.item_name} to deposit`);
     }
     return ok(
-      `Deposited all ${args.item_name} into ${visible.name}`,
+      `Deposited ${result.count} ${args.item_name}`,
       this.perception.observe()
     );
   }
@@ -740,42 +716,15 @@ export class MinecraftActions {
         count: z.number().int().min(1).max(64)
       })
       .parse(raw);
-    const owned = this.memory
-      .ownedContainers(String(this.bot.game?.dimension))
-      .find(
-        (container) =>
-          container.position.x === args.x &&
-          container.position.y === args.y &&
-          container.position.z === args.z
-      );
-    if (!owned) return fail("That container is not registered as owned");
-    const position = new Vec3(args.x, args.y, args.z);
-    await this.movement.positionForBlock(args);
-    const block = this.perception.blockAt(position);
-    if (!block || !isStorageBlock(block.name) || !this.perception.canSeeBlock(block)) {
-      return fail("The owned storage container is unavailable");
-    }
-    const container = await this.bot.openContainer(block);
-    try {
-      const stack = container
-        .containerItems()
-        .find((item) => item.name === args.item_name);
-      if (!stack) return fail(`Owned storage has no ${args.item_name}`);
-      const count = Math.min(args.count, stack.count);
-      await container.withdraw(
-        stack.type,
-        stack.metadata,
-        count
-      );
-      this.memory.recordContainerWithdrawal(
-        owned.id,
-        args.item_name,
-        count
-      );
-      return ok(`Withdrew ${count} ${args.item_name} from owned storage`);
-    } finally {
-      container.close();
-    }
+    const result = await this.storage.withdraw(
+      args,
+      args.item_name,
+      args.count,
+      true
+    );
+    if (result.status === "blocked") return fail(result.detail);
+    if (result.status !== "retrieved") return fail("Storage withdrawal failed");
+    return ok(`Withdrew ${result.count} ${args.item_name} from owned storage`);
   }
 
   private requireSnapshot(): PerceptionSnapshot {

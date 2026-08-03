@@ -1,6 +1,7 @@
 import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
+import type { StorageSystem } from "./storage-system.js";
 import type { Perception } from "./perception.js";
 import type {
   ActivityUpdate,
@@ -37,6 +38,7 @@ export class WorkExecutor {
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
     private readonly actions: MinecraftActions,
+    private readonly storage: StorageSystem,
     private readonly tickMs: number,
     private readonly requestReplan: (reason: string) => void,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
@@ -331,13 +333,9 @@ export class WorkExecutor {
       return;
     }
 
-    this.perception.inspectVisibleBlock(position.x, position.y, position.z);
-    const deposit = await this.actions.execute("deposit_item_in_container", {
-      ...position,
-      item_name: order.spec.itemName
-    });
-    if (!deposit.ok) {
-      this.retryStorage(order.id, deposit.message);
+    const deposit = await this.storage.deposit(position, order.spec.itemName);
+    if (deposit.status === "blocked") {
+      this.retryStorage(order.id, deposit.detail);
       return;
     }
 
@@ -351,7 +349,10 @@ export class WorkExecutor {
       remaining
     );
     this.storageFailures.delete(order.id);
-    console.log(`[work] ${deposit.message}; resuming gather order ${order.id}`);
+    console.log(
+      `[work] Stored ${deposit.status === "stored" ? deposit.count : 0} ` +
+        `${order.spec.itemName}; resuming gather order ${order.id}`
+    );
   }
 
   private retryStorage(id: number, reason: string): void {
