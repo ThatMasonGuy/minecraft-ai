@@ -95,6 +95,16 @@ Treat local Git commits as frequent rollback checkpoints, not only as declaratio
 - Use the repository's normal human author identity and project/team voice. When attribution is required, credit the user, project, or human team as appropriate.
 - Describe tools and model behavior only when technically relevant to operating or debugging the Minecraft agent, not as authorship credit.
 
+## Changelog
+
+- Maintain `CHANGELOG.md` as the durable human-readable record of project changes.
+- Before every checkpoint commit, review the staged diff and update the `Unreleased` section for any behavior, capability, data schema, operator workflow, configuration default, dependency, compatibility, or developer-process change.
+- Write changelog entries in project/team voice and describe the outcome. Never credit AI or tooling.
+- Group entries under `Added`, `Changed`, `Fixed`, `Deprecated`, `Removed`, or `Security` as appropriate.
+- Keep entries concise but specific enough to identify the affected subsystem and operational impact.
+- Pure typo, formatting, comment, or test-only changes that do not alter behavior or supported coverage may omit a changelog entry. State that judgment in the checkpoint handoff when it is not obvious.
+- Do not rewrite released history. Move accumulated `Unreleased` entries into a dated version section only when the user asks to prepare a release.
+
 ## Completion and reporting
 
 - Report code paths changed, validation performed, model calls made, token usage when available, and autonomous evidence observed.
