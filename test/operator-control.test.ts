@@ -7,6 +7,7 @@ import {
   OperatorControl,
   OperatorInputError
 } from "../src/operator-control.js";
+import { TaskSystem } from "../src/task-system.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -189,13 +190,28 @@ function createControl(
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "minecraft-ai-operator-"));
   temporaryDirectories.push(directory);
   const memory = new EpisodicMemory(path.join(directory, "memory.sqlite"));
+  const tasks = new TaskSystem(
+    memory,
+    { count: inventoryCount } as never,
+    lifecycleStub() as never,
+    lifecycleStub() as never,
+    { ...lifecycleStub(), isActive: () => false } as never
+  );
   const control = new OperatorControl({
     memory,
-    inventoryCount,
+    tasks,
     requestPlanning,
     plannerMode: "manual",
     toolMode: "dry_run",
     model: "gpt-5.6-luna"
   });
   return { control, memory };
+}
+
+function lifecycleStub() {
+  return {
+    start: () => undefined,
+    stop: () => undefined,
+    setTaskLifecycle: () => undefined
+  };
 }

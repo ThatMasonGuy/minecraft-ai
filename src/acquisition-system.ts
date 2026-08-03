@@ -5,6 +5,7 @@ import type { Perception } from "./perception.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
+import type { TaskLifecycle } from "./task-lifecycle.js";
 import type {
   ActivityUpdate,
   PerceptionSnapshot,
@@ -35,6 +36,7 @@ export class AcquisitionSystem {
   private readonly searchStates = new Map<number, SearchState>();
   private readonly excludedSources = new Map<number, Set<string>>();
   private readonly storageFailures = new Map<number, number>();
+  private taskLifecycle?: TaskLifecycle;
 
   constructor(
     private readonly memory: EpisodicMemory,
@@ -63,6 +65,10 @@ export class AcquisitionSystem {
 
   isActive(): boolean {
     return this.memory.activeWorkOrder() !== undefined;
+  }
+
+  setTaskLifecycle(taskLifecycle: TaskLifecycle): void {
+    this.taskLifecycle = taskLifecycle;
   }
 
   private runTick(): void {
@@ -216,7 +222,7 @@ export class AcquisitionSystem {
     this.searchStates.delete(id);
     this.excludedSources.delete(id);
     this.storageFailures.delete(id);
-    this.memory.updateWorkOrderStatus(id, "completed", reason);
+    this.requireTaskLifecycle().finishWorkOrder(id, "completed", reason);
     this.memory.record({
       kind: "work_order_outcome",
       summary: `Work order ${id} completed: ${reason}`,
@@ -233,7 +239,7 @@ export class AcquisitionSystem {
     this.searchStates.delete(id);
     this.excludedSources.delete(id);
     this.storageFailures.delete(id);
-    this.memory.updateWorkOrderStatus(id, "blocked", reason);
+    this.requireTaskLifecycle().finishWorkOrder(id, "blocked", reason);
     this.memory.record({
       kind: "work_order_outcome",
       summary: `Work order ${id} blocked: ${reason}`,
@@ -399,6 +405,13 @@ export class AcquisitionSystem {
     detail?: string
   ): void {
     this.onActivity?.({ phase, label, detail });
+  }
+
+  private requireTaskLifecycle(): TaskLifecycle {
+    if (!this.taskLifecycle) {
+      throw new Error("AcquisitionSystem has no TaskSystem lifecycle connection");
+    }
+    return this.taskLifecycle;
   }
 }
 

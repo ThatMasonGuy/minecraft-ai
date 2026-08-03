@@ -12,6 +12,38 @@ function sourceFiles(): string[] {
 }
 
 describe("enclosed subsystem boundaries", () => {
+  it("keeps broad task submission and cancellation in TaskSystem", () => {
+    const allowedSubmission = new Set([
+      path.join(SOURCE_ROOT, "memory.ts"),
+      path.join(SOURCE_ROOT, "task-system.ts"),
+      path.join(SOURCE_ROOT, "seed-house-project.ts"),
+      path.join(SOURCE_ROOT, "seed-mining-project.ts")
+    ]);
+    const allowedStatus = new Set([
+      path.join(SOURCE_ROOT, "memory.ts"),
+      path.join(SOURCE_ROOT, "task-system.ts")
+    ]);
+    const violations = sourceFiles().flatMap((file) => {
+      const relative = path.relative(SOURCE_ROOT, file);
+      return fs
+        .readFileSync(file, "utf8")
+        .split(/\r?\n/)
+        .flatMap((line, index) => {
+          const submission =
+            /\.create(?:GatherBlocksWorkOrder|ProjectPlan)\s*\(/.test(line) &&
+            !allowedSubmission.has(file);
+          const status =
+            /\.updateWorkOrderStatus\s*\(/.test(line) &&
+            !allowedStatus.has(file);
+          return submission || status
+            ? [`${relative}:${index + 1}: ${line.trim()}`]
+            : [];
+        });
+    });
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps deterministic workflows independent of the planner action adapter", () => {
     for (const name of [
       "acquisition-system.ts",

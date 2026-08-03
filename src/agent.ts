@@ -21,6 +21,7 @@ import {
 } from "./planner-mode.js";
 import type { ActionResult, ActivityUpdate } from "./types.js";
 import type { Goal, PerceptionSnapshot } from "./types.js";
+import type { TaskSystem } from "./task-system.js";
 
 interface AgentOptions {
   apiKey: string;
@@ -74,6 +75,7 @@ export class AutonomousAgent {
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
     private readonly actions: MinecraftActions,
+    private readonly tasks: TaskSystem,
     private readonly options: AgentOptions
   ) {
     this.client = new OpenAI({ apiKey: options.apiKey });
@@ -543,7 +545,7 @@ export class AutonomousAgent {
   }
 
   private ensureDeterministicContinuity(): void {
-    if (this.memory.activeProject() || this.memory.activeWorkOrder()) return;
+    if (this.tasks.hasActiveDeterministicTask()) return;
     const goal = this.memory.activeGoals()[0];
     if (!goal) return;
 
@@ -557,10 +559,7 @@ export class AutonomousAgent {
       return;
     }
 
-    const initialCount = snapshot.inventory
-      .filter((item) => item.name === plan.itemName)
-      .reduce((total, item) => total + item.count, 0);
-    const order = this.memory.createGatherBlocksWorkOrder(
+    const order = this.tasks.submitGather(
       {
         goalId: goal.id,
         itemName: plan.itemName,
@@ -569,7 +568,7 @@ export class AutonomousAgent {
         continuation: "until_replaced",
         storage: { mode: "inventory" }
       },
-      initialCount
+      "planner"
     );
     console.log(
       `[work] Started continuity order ${order.id} for paused goal ${goal.id}: ` +

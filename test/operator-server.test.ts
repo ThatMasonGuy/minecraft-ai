@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { EpisodicMemory } from "../src/memory.js";
 import { OperatorControl } from "../src/operator-control.js";
 import { startOperatorServer } from "../src/operator-server.js";
+import { TaskSystem } from "../src/task-system.js";
 
 const TOKEN = "test-operator-token-that-is-long-enough";
 
@@ -12,9 +13,28 @@ describe("operator HTTP API", () => {
   it("submits deterministic work through the running-process interface", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "minecraft-ai-operator-http-"));
     const memory = new EpisodicMemory(path.join(directory, "memory.sqlite"));
+    const tasks = new TaskSystem(
+      memory,
+      { count: () => 3 } as never,
+      {
+        start: () => undefined,
+        stop: () => undefined,
+        setTaskLifecycle: () => undefined
+      } as never,
+      {
+        start: () => undefined,
+        stop: () => undefined,
+        setTaskLifecycle: () => undefined
+      } as never,
+      {
+        start: () => undefined,
+        stop: () => undefined,
+        isActive: () => false
+      } as never
+    );
     const control = new OperatorControl({
       memory,
-      inventoryCount: () => 3,
+      tasks,
       requestPlanning: () => undefined,
       plannerMode: "manual",
       toolMode: "dry_run",

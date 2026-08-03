@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Added TaskSystem as the sole runtime lifecycle API for broad gather delegation, durable project submission, project-owned acquisition, cancellation, active-task status, and workflow startup/shutdown; planner, operator, chat, project, and budget-continuity paths now submit through it.
 - Promoted durable multi-step projects from an action-coupled executor to ProjectSystem; surveys, production, mining, traversal, building, food acquisition, storage, verification, and recovery now compose subsystem APIs, and all project world reads route through sensing.
 - Routed project food hunting through CombatSystem's visible-mob engagement API, eliminating the parallel project attack loop while preserving the unconditional player-target rejection boundary.
 - Promoted persistent gather work from an action-driven executor to AcquisitionSystem; source selection, finite or continuing search, mining, storage pressure, survival pauses, progress accounting, and escalation now compose enclosed subsystem APIs without planner tools.
@@ -30,6 +31,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added focused task-lifecycle and operator integration coverage plus enforcement against task creation or cancellation outside TaskSystem, excluding explicit offline seed commands.
 - Added combat API coverage for explicit non-player engagements plus architecture enforcement against attacks or shield mutations outside CombatSystem.
 - Added focused survival-policy coverage plus enforcement against raw health, hunger, oxygen, automatic-eating, sleep, or wake access outside SurvivalSystem and read-only presentation adapters.
 - Added storage transfer and ownership coverage plus enforcement against direct container access outside StorageSystem.

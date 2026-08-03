@@ -8,11 +8,9 @@ import {
 } from "./api-usage.js";
 import type { PlanningAttribution } from "./agent.js";
 import type { EpisodicMemory } from "./memory.js";
-import {
-  parseProjectPlanDraft,
-  validateProjectSemantics
-} from "./project-plan.js";
-import type { GatherBlocksWorkSpec, ProjectPlanDraft } from "./types.js";
+import { parseProjectPlanDraft } from "./project-plan.js";
+import type { GatherBlocksWorkSpec } from "./types.js";
+import { TaskSystem, TaskSystemError } from "./task-system.js";
 
 const positionSchema = z.object({
   x: z.number().int(),
@@ -67,7 +65,7 @@ export class OperatorInputError extends Error {}
 
 export interface OperatorControlOptions {
   memory: EpisodicMemory;
-  inventoryCount: (itemName: string) => number;
+  tasks: TaskSystem;
   requestPlanning: (task: string, attribution: PlanningAttribution) => void;
   plannerMode: "manual" | "automatic";
   toolMode: "dry_run" | "execute";
@@ -82,8 +80,7 @@ export class OperatorControl {
       plannerMode: this.options.plannerMode,
       toolMode: this.options.toolMode,
       model: this.options.model,
-      activeWorkOrder: this.options.memory.activeWorkOrder() ?? null,
-      activeProject: this.options.memory.activeProject() ?? null
+      ...this.options.tasks.status()
     };
   }
 
@@ -94,24 +91,8 @@ export class OperatorControl {
 
   submitGather(input: unknown): object {
     const spec = operatorGatherTaskSchema.parse(input) as GatherBlocksWorkSpec;
-    if (this.options.memory.activeProject()) {
-      throw new OperatorInputError(
-        "A project is active; cancel it before submitting a standalone work order"
-      );
-    }
     const beforeCalls = this.options.memory.apiUsageSummary().lifetime.calls;
-    const order = this.options.memory.createGatherBlocksWorkOrder(
-      spec,
-      this.options.inventoryCount(spec.itemName),
-      "operator"
-    );
-    this.options.memory.record({
-      kind: "operator_task",
-      summary: `Operator submitted gather work order ${order.id}: ${spec.minimumCount} ${spec.itemName}`,
-      payload: { taskType: "gather", workOrderId: order.id, spec },
-      actor: "operator",
-      importance: 8
-    });
+    const order = this.runTask(() => this.options.tasks.submitGather(spec, "operator"));
     return {
       paidApiCalls: this.options.memory.apiUsageSummary().lifetime.calls - beforeCalls,
       workOrder: order
@@ -120,16 +101,8 @@ export class OperatorControl {
 
   submitProject(input: unknown): object {
     const draft = parseProjectPlanDraft(input);
-    assertProjectSemantics(draft);
     const beforeCalls = this.options.memory.apiUsageSummary().lifetime.calls;
-    const project = this.options.memory.createProjectPlan(draft, "operator");
-    this.options.memory.record({
-      kind: "operator_task",
-      summary: `Operator submitted project ${project.id}: ${project.title}`,
-      payload: { taskType: "project", projectId: project.id, draft },
-      actor: "operator",
-      importance: 8
-    });
+    const project = this.runTask(() => this.options.tasks.submitProject(draft, "operator"));
     return {
       paidApiCalls: this.options.memory.apiUsageSummary().lifetime.calls - beforeCalls,
       project
@@ -138,29 +111,7 @@ export class OperatorControl {
 
   cancel(input: unknown): object {
     const { reason } = cancelSchema.parse(input);
-    const workOrder = this.options.memory.activeWorkOrder();
-    const project = this.options.memory.activeProject();
-    const cancelled: Array<{ type: "work_order" | "project"; id: number }> = [];
-    if (workOrder) {
-      this.options.memory.updateWorkOrderStatus(workOrder.id, "cancelled", reason);
-      cancelled.push({ type: "work_order", id: workOrder.id });
-    }
-    if (project) {
-      project.status = "cancelled";
-      project.statusReason = reason;
-      this.options.memory.saveProject(project);
-      cancelled.push({ type: "project", id: project.id });
-    }
-    this.options.memory.record({
-      kind: "operator_task_cancelled",
-      summary:
-        cancelled.length > 0
-          ? `Operator cancelled ${cancelled.length} active deterministic task(s)`
-          : "Operator requested cancellation with no active deterministic task",
-      payload: { reason, cancelled },
-      actor: "operator",
-      importance: 7
-    });
+    const cancelled = this.options.tasks.cancel(reason, "operator");
     return { cancelled };
   }
 
@@ -168,8 +119,7 @@ export class OperatorControl {
     const { task, workloadType, taskType, tags, taskId: suppliedTaskId } =
       planSchema.parse(input);
     if (
-      this.options.memory.activeProject() ||
-      this.options.memory.activeWorkOrder()
+      this.options.tasks.hasActiveDeterministicTask()
     ) {
       throw new OperatorInputError(
         "A deterministic task is active; cancel it before requesting paid planning"
@@ -200,6 +150,17 @@ export class OperatorControl {
           : "Execute mode may use one initial API call plus configured tool continuations."
     };
   }
+
+  private runTask<T>(operation: () => T): T {
+    try {
+      return operation();
+    } catch (error) {
+      if (error instanceof TaskSystemError) {
+        throw new OperatorInputError(error.message);
+      }
+      throw error;
+    }
+  }
 }
 
 function optionalQueryString() {
@@ -223,9 +184,4 @@ function optionalEnum<const Values extends readonly [string, ...string[]]>(
     (value) => (Array.isArray(value) ? value[0] : value),
     z.enum(values).optional()
   );
-}
-
-function assertProjectSemantics(draft: ProjectPlanDraft): void {
-  const errors = validateProjectSemantics(draft);
-  if (errors.length > 0) throw new OperatorInputError(errors.join("; "));
 }

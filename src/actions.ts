@@ -4,8 +4,7 @@ import { z } from "zod";
 import type { EpisodicMemory } from "./memory.js";
 import type { Perception } from "./perception.js";
 import {
-  parseProjectPlanDraft,
-  validateProjectSemantics
+  parseProjectPlanDraft
 } from "./project-plan.js";
 import {
   isCurrentSupportBlock
@@ -17,6 +16,11 @@ import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
+import {
+  deterministicGatherSources,
+  type TaskSystem
+} from "./task-system.js";
+export { deterministicGatherSources } from "./task-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -41,6 +45,7 @@ export class MinecraftActions {
     private readonly production: ProductionSystem,
     private readonly storage: StorageSystem,
     private readonly survival: SurvivalSystem,
+    private readonly tasks: TaskSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -323,11 +328,7 @@ export class MinecraftActions {
           .object({ plan_json: z.string().min(2).max(500_000) })
           .parse(raw);
         const draft = parseProjectPlanDraft(JSON.parse(plan_json));
-        const semanticErrors = validateProjectSemantics(draft);
-        if (semanticErrors.length > 0) {
-          return fail(`Invalid project plan: ${semanticErrors.join("; ")}`);
-        }
-        const project = this.memory.createProjectPlan(draft);
+        const project = this.tasks.submitProject(draft, "planner");
         return ok(`Started project ${project.id}: ${project.title}`, project);
       }
       case "finish_goal": {
@@ -382,15 +383,14 @@ export class MinecraftActions {
             return fail("The configured storage container is not currently visible");
           }
         }
-        const initialCount = this.inventory.count(args.item_name);
-        const order = this.memory.createGatherBlocksWorkOrder({
+        const order = this.tasks.submitGather({
           goalId: args.goal_id === 0 ? undefined : args.goal_id,
           itemName: args.item_name,
           blockNames: [...new Set(args.block_names)],
           minimumCount: args.minimum_count,
           continuation: args.continuation,
           storage
-        }, initialCount);
+        }, "planner");
         return ok(`Started deterministic work order ${order.id}`, order);
       }
       case "delegate_gather": {
@@ -402,31 +402,16 @@ export class MinecraftActions {
             continuation: z.enum(["stop_at_minimum", "until_replaced"])
           })
           .parse(raw);
-        const blockNames = deterministicGatherSources(args.item_name);
-        if (blockNames.length === 0) {
-          return fail(
-            `No deterministic gather-source rule exists for ${args.item_name}`
-          );
-        }
         const dimension = String(this.bot.game?.dimension);
-        const ownedStorage = this.memory.ownedContainers(dimension)[0];
-        const storage = ownedStorage
-          ? {
-              mode: "container" as const,
-              position: ownedStorage.position
-            }
-          : { mode: "inventory" as const };
-        const initialCount = this.inventory.count(args.item_name);
-        const order = this.memory.createGatherBlocksWorkOrder(
+        const order = this.tasks.delegateGather(
           {
             goalId: args.goal_id === 0 ? undefined : args.goal_id,
             itemName: args.item_name,
-            blockNames,
             minimumCount: args.minimum_count,
             continuation: args.continuation,
-            storage
+            dimension
           },
-          initialCount
+          "planner"
         );
         return ok(
           `Delegated ${args.minimum_count} ${args.item_name} to deterministic work order ${order.id}`,
@@ -441,13 +426,9 @@ export class MinecraftActions {
         const { reason } = z
           .object({ reason: z.string().min(1).max(1_000) })
           .parse(raw);
-        const order = this.memory.activeWorkOrder();
+        const order = this.tasks.status().activeWorkOrder;
         if (!order) return fail("There is no active work order");
-        const cancelled = this.memory.updateWorkOrderStatus(
-          order.id,
-          "cancelled",
-          reason
-        );
+        const cancelled = this.tasks.cancel(reason, "planner");
         return ok(`Cancelled work order ${order.id}`, cancelled);
       }
       default:
@@ -754,33 +735,6 @@ const HIGH_LEVEL_PLANNER_TOOLS = new Set([
 
 export function isHighLevelPlannerTool(name: string): boolean {
   return HIGH_LEVEL_PLANNER_TOOLS.has(name);
-}
-
-export function deterministicGatherSources(itemName: string): string[] {
-  const explicit: Record<string, string[]> = {
-    cobblestone: ["stone"],
-    dirt: ["dirt", "grass_block"],
-    coal: ["coal_ore", "deepslate_coal_ore"],
-    raw_iron: ["iron_ore", "deepslate_iron_ore"],
-    raw_copper: ["copper_ore", "deepslate_copper_ore"],
-    raw_gold: ["gold_ore", "deepslate_gold_ore"],
-    diamond: ["diamond_ore", "deepslate_diamond_ore"],
-    emerald: ["emerald_ore", "deepslate_emerald_ore"],
-    redstone: ["redstone_ore", "deepslate_redstone_ore"],
-    lapis_lazuli: ["lapis_ore", "deepslate_lapis_ore"],
-    flint: ["gravel"]
-  };
-  if (explicit[itemName]) return explicit[itemName];
-  if (
-    itemName.endsWith("_log") ||
-    itemName.endsWith("_stem") ||
-    itemName.endsWith("_wood") ||
-    itemName.endsWith("_hyphae") ||
-    ["sand", "gravel", "clay", "netherrack", "end_stone"].includes(itemName)
-  ) {
-    return [itemName];
-  }
-  return [];
 }
 
 function tool(

@@ -23,6 +23,7 @@ import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
 import type { CombatSystem } from "./combat-system.js";
+import type { TaskLifecycle } from "./task-lifecycle.js";
 import { isReplaceableBlockName } from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-system.js";
@@ -82,6 +83,7 @@ export class ProjectSystem {
   private timer?: NodeJS.Timeout;
   private running = false;
   private lastState?: string;
+  private taskLifecycle?: TaskLifecycle;
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
@@ -113,6 +115,10 @@ export class ProjectSystem {
 
   isActive(): boolean {
     return this.memory.activeProject() !== undefined;
+  }
+
+  setTaskLifecycle(taskLifecycle: TaskLifecycle): void {
+    this.taskLifecycle = taskLifecycle;
   }
 
   private runTick(): void {
@@ -306,7 +312,7 @@ export class ProjectSystem {
       if (state.workOrderId !== undefined) {
         const order = this.memory.workOrder(state.workOrderId);
         if (order.status === "active") {
-          this.memory.updateWorkOrderStatus(
+          this.requireTaskLifecycle().finishWorkOrder(
             order.id,
             "completed",
             `Project material target reached with ${current} ${spec.itemName}`
@@ -367,7 +373,7 @@ export class ProjectSystem {
         if (state.workOrderId !== undefined) {
           const existing = this.memory.workOrder(state.workOrderId);
           if (existing.status === "active") {
-            this.memory.updateWorkOrderStatus(
+            this.requireTaskLifecycle().finishWorkOrder(
               existing.id,
               "cancelled",
               "Returning to the surface before gathering"
@@ -394,7 +400,7 @@ export class ProjectSystem {
       if (state.workOrderId !== undefined) {
         const existing = this.memory.workOrder(state.workOrderId);
         if (existing.status === "active") {
-          this.memory.updateWorkOrderStatus(
+          this.requireTaskLifecycle().finishWorkOrder(
             existing.id,
             "cancelled",
             "Returning to the surface before gathering"
@@ -415,7 +421,7 @@ export class ProjectSystem {
       return;
     }
 
-    const order = this.memory.createGatherBlocksWorkOrder(
+    const order = this.requireTaskLifecycle().submitProjectGather(
       {
         goalId: project.goalId,
         itemName: spec.itemName,
@@ -424,10 +430,17 @@ export class ProjectSystem {
         continuation: "until_replaced",
         storage: { mode: "inventory" }
       },
-      current
+      project.origin
     );
     state.workOrderId = order.id;
     this.memory.saveProject(project);
+  }
+
+  private requireTaskLifecycle(): TaskLifecycle {
+    if (!this.taskLifecycle) {
+      throw new Error("ProjectSystem has no TaskSystem lifecycle connection");
+    }
+    return this.taskLifecycle;
   }
 
   private async followRecordedTraversal(

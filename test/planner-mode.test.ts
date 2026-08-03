@@ -7,6 +7,7 @@ import {
   allowsAutomaticPlanning,
   parsePlanningCommand
 } from "../src/planner-mode.js";
+import type { TaskSystem } from "../src/task-system.js";
 
 describe("planner mode", () => {
   it("allows automatic wakeups only in automatic mode", () => {
@@ -20,6 +21,7 @@ describe("planner mode", () => {
       {} as EpisodicMemory,
       {} as Perception,
       {} as MinecraftActions,
+      {} as TaskSystem,
       {
         apiKey: "test-key-that-is-long-enough",
         model: "test-model",

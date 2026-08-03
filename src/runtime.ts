@@ -36,6 +36,7 @@ import { MineflayerSurvivalSystem, type SurvivalSystem } from "./survival-system
 import { startViewerServer, type ViewerServer } from "./viewer-server.js";
 import { ViewerStatusStore } from "./viewer-status.js";
 import { AcquisitionSystem } from "./acquisition-system.js";
+import { TaskSystem } from "./task-system.js";
 
 const require = createRequire(import.meta.url);
 const { pathfinder } = require(
@@ -54,6 +55,7 @@ export class MinecraftRuntime {
   private recoverySystem?: RecoverySystem;
   private storageSystem?: StorageSystem;
   private survivalSystem?: SurvivalSystem;
+  private taskSystem?: TaskSystem;
   private executionCoordinator?: ExecutionCoordinator;
   private inventorySystem?: InventorySystem;
   private reconnectTimer?: NodeJS.Timeout;
@@ -75,9 +77,7 @@ export class MinecraftRuntime {
     this.agent?.stop();
     this.combatSystem?.stop();
     this.lootingSystem?.stop();
-    this.acquisitionSystem?.stop();
-    this.projectSystem?.stop();
-    this.recoverySystem?.stop();
+    this.taskSystem?.stop();
     this.storageSystem?.stop();
     this.survivalSystem?.stop();
     this.executionCoordinator?.dispose();
@@ -232,20 +232,7 @@ export class MinecraftRuntime {
         )
       );
       this.storageSystem = storageSystem;
-      const actions = new MinecraftActions(
-        bot,
-        this.memory,
-        perception,
-        movementSystem,
-        inventorySystem,
-        miningSystem,
-        buildingSystem,
-        productionSystem,
-        storageSystem,
-        survivalSystem,
-        config.maxMoveDistance
-      );
-      this.recoverySystem = new RecoverySystem(
+      const recoverySystem = new RecoverySystem(
         bot,
         this.memory,
         movementSystem,
@@ -261,54 +248,8 @@ export class MinecraftRuntime {
           () => this.recoverySystem?.isActive() ?? false
         )
       );
-      this.recoverySystem.start();
-      storageSystem.start();
-      this.agent = new AutonomousAgent(this.memory, perception, actions, {
-        apiKey: config.openaiApiKey,
-        model: config.openaiModel,
-        reasoningEffort: config.reasoningEffort,
-        plannerMode: config.plannerMode,
-        toolMode: config.plannerToolMode,
-        webSearchEnabled: config.webSearchEnabled,
-        tickMs: config.tickMs,
-        maxToolRounds: config.maxToolRounds,
-        maxOutputTokens: config.maxOutputTokens,
-        dailyTokenBudget: config.dailyTokenBudget,
-        dailyTokenReserve: config.dailyTokenReserve,
-        identitySeed: `${config.minecraft.host}:${config.minecraft.port}:${config.minecraft.username}`,
-        onActivity: (activity) => this.viewerStatus.setAgent(activity)
-      });
-      if (config.operatorEnabled) {
-        const control = new OperatorControl({
-          memory: this.memory,
-          inventoryCount: (itemName) => inventorySystem.count(itemName),
-          requestPlanning: (task, attribution) =>
-            this.agent?.wake(task, attribution),
-          plannerMode: config.plannerMode,
-          toolMode: config.plannerToolMode,
-          model: config.openaiModel
-        });
-        try {
-          this.operator = await startOperatorServer({
-            host: config.operatorHost,
-            port: config.operatorPort,
-            control,
-            token: loadOrCreateOperatorToken(
-              config.dataDir,
-              config.operatorToken
-            )
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.memory.record({
-            kind: "operator_server_error",
-            summary: `Local operator server failed to start: ${message}`,
-            importance: 9
-          });
-          console.error(`[operator] Failed to start: ${message}`);
-        }
-      }
-      this.acquisitionSystem = new AcquisitionSystem(
+      this.recoverySystem = recoverySystem;
+      const acquisitionSystem = new AcquisitionSystem(
         this.memory,
         perception,
         movementSystem,
@@ -340,7 +281,8 @@ export class MinecraftRuntime {
           () => this.memory.activeWorkOrder() !== undefined
         )
       );
-      this.projectSystem = new ProjectSystem(
+      this.acquisitionSystem = acquisitionSystem;
+      const projectSystem = new ProjectSystem(
         bot,
         this.memory,
         perception,
@@ -370,6 +312,75 @@ export class MinecraftRuntime {
           () => this.memory.activeProject() !== undefined
         )
       );
+      this.projectSystem = projectSystem;
+      const taskSystem = new TaskSystem(
+        this.memory,
+        inventorySystem,
+        acquisitionSystem,
+        projectSystem,
+        recoverySystem
+      );
+      this.taskSystem = taskSystem;
+      const actions = new MinecraftActions(
+        bot,
+        this.memory,
+        perception,
+        movementSystem,
+        inventorySystem,
+        miningSystem,
+        buildingSystem,
+        productionSystem,
+        storageSystem,
+        survivalSystem,
+        taskSystem,
+        config.maxMoveDistance
+      );
+      this.agent = new AutonomousAgent(this.memory, perception, actions, taskSystem, {
+        apiKey: config.openaiApiKey,
+        model: config.openaiModel,
+        reasoningEffort: config.reasoningEffort,
+        plannerMode: config.plannerMode,
+        toolMode: config.plannerToolMode,
+        webSearchEnabled: config.webSearchEnabled,
+        tickMs: config.tickMs,
+        maxToolRounds: config.maxToolRounds,
+        maxOutputTokens: config.maxOutputTokens,
+        dailyTokenBudget: config.dailyTokenBudget,
+        dailyTokenReserve: config.dailyTokenReserve,
+        identitySeed: `${config.minecraft.host}:${config.minecraft.port}:${config.minecraft.username}`,
+        onActivity: (activity) => this.viewerStatus.setAgent(activity)
+      });
+      if (config.operatorEnabled) {
+        const control = new OperatorControl({
+          memory: this.memory,
+          tasks: taskSystem,
+          requestPlanning: (task, attribution) =>
+            this.agent?.wake(task, attribution),
+          plannerMode: config.plannerMode,
+          toolMode: config.plannerToolMode,
+          model: config.openaiModel
+        });
+        try {
+          this.operator = await startOperatorServer({
+            host: config.operatorHost,
+            port: config.operatorPort,
+            control,
+            token: loadOrCreateOperatorToken(
+              config.dataDir,
+              config.operatorToken
+            )
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.memory.record({
+            kind: "operator_server_error",
+            summary: `Local operator server failed to start: ${message}`,
+            importance: 9
+          });
+          console.error(`[operator] Failed to start: ${message}`);
+        }
+      }
+      storageSystem.start();
 
       const snapshot = perception.observe();
       this.memory.record({
@@ -389,8 +400,7 @@ export class MinecraftRuntime {
           `; tools ${config.plannerToolMode}`
       );
       this.agent.start();
-      this.acquisitionSystem.start();
-      this.projectSystem.start();
+      taskSystem.start();
     });
 
     bot.on("chat", (username, message) => {
@@ -406,16 +416,14 @@ export class MinecraftRuntime {
       });
       const command = message.trim().toLowerCase();
       if (command === "!stop" || command === "!pause") {
-        const order = this.memory.activeWorkOrder();
-        if (order) {
-          this.memory.updateWorkOrderStatus(
-            order.id,
-            "cancelled",
-            `Stopped by ${username}`
-          );
-          bot.chat(`Paused work order ${order.id}.`);
+        const cancelled = this.taskSystem?.cancel(
+          `Stopped by ${username}`,
+          "operator"
+        ) ?? [];
+        if (cancelled.length > 0) {
+          bot.chat(`Paused ${cancelled.length} deterministic task(s).`);
         } else {
-          bot.chat("There is no active work order.");
+          bot.chat("There is no active deterministic task.");
         }
         return;
       }
@@ -563,9 +571,7 @@ export class MinecraftRuntime {
     bot.once("end", (reason) => {
       this.agent?.stop();
       this.combatSystem?.stop();
-      this.acquisitionSystem?.stop();
-      this.projectSystem?.stop();
-      this.recoverySystem?.stop();
+      this.taskSystem?.stop();
       this.storageSystem?.stop();
       this.survivalSystem?.stop();
       this.executionCoordinator?.dispose();
@@ -574,6 +580,7 @@ export class MinecraftRuntime {
       this.acquisitionSystem = undefined;
       this.projectSystem = undefined;
       this.recoverySystem = undefined;
+      this.taskSystem = undefined;
       this.storageSystem = undefined;
       this.survivalSystem = undefined;
       this.executionCoordinator = undefined;
