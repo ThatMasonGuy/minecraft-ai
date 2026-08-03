@@ -12,6 +12,7 @@ import {
 } from "./navigation.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { InventorySystem } from "./inventory-system.js";
+import type { MiningSystem } from "./mining-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
 
@@ -31,6 +32,7 @@ export class MinecraftActions {
     private readonly perception: Perception,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
+    private readonly mining: MiningSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -534,33 +536,16 @@ export class MinecraftActions {
     if (!this.perception.isBlockCurrentlyVisible(args.x, args.y, args.z)) {
       return fail("That block was not present in the latest line-of-sight observation");
     }
-    const position = new Vec3(args.x, args.y, args.z);
-    let block = this.perception.blockAt(position);
-    if (!block || !this.perception.canSeeBlock(block) || !this.bot.canDigBlock(block)) {
-      await this.movement.positionForBlock(args);
-      block = this.perception.blockAt(position);
-    }
-    if (!block || block.name === "air") return fail("The observed block is no longer there");
-    if (!this.perception.canSeeBlock(block)) return fail("The block is no longer in line of sight");
-    if (!this.bot.canDigBlock(block)) return fail(`Cannot dig ${block.name} from here`);
-    const tool = this.inventory.bestHarvestTool(block);
-    if (tool) await this.inventory.equip(tool, "hand");
-    await withTimeout(
-      this.bot.dig(block),
-      10_000,
-      () => this.bot.stopDigging()
-    );
-    try {
-      await this.movement.goNear(
-        { x: args.x, y: this.bot.entity.position.y, z: args.z },
-        1,
-        10_000
-      );
-    } catch {
-      // Mining succeeded; collection is best-effort because drops can move or fall.
+    const result = await this.mining.mineBlock({
+      position: args,
+      requireVisible: true
+    });
+    if (result.status === "blocked") return fail(result.detail);
+    if (result.status === "already_clear") {
+      return fail("The observed block is no longer there");
     }
     await delay(500);
-    return ok(`Mined visible ${block.name}`, this.perception.observe());
+    return ok(`Mined visible ${result.blockName}`, this.perception.observe());
   }
 
   private async placeBlock(raw: unknown): Promise<ActionResult> {

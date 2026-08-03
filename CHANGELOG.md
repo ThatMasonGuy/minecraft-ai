@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Extracted block safety classification, tool-tier selection, dig retries/timeouts, protected-block rules, falling-block clearance, exact-cell excavation, and collection positioning into MiningSystem; actions, projects, and recovery no longer dig directly.
 - Extracted dropped-item selection, filtering, collection routing, clear confirmation, and collection telemetry into LootingSystem; combat and death recovery now share the same deterministic collector.
 - Centralized carried-item inspection, equipment, consumption, tool selection, capacity, food classification, full inventory layout, and cross-system item reservations behind InventorySystem.
 - Defined a shared sensing-system contract for perception snapshots, visible entity resolution, loaded block inspection, and line-of-sight checks; combat, recovery, projects, and deterministic actions no longer maintain separate entity-visibility queries.
@@ -21,6 +22,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added mining authority coverage and enforcement that rejects digging or diggability logic outside MiningSystem.
 - Added focused looting selection and collection-event coverage plus enforcement against parallel dropped-item collectors.
 - Added deterministic inventory reservation coverage and architecture enforcement that rejects raw carried-inventory access outside InventorySystem.
 - Added an architecture boundary test that rejects locomotion, orientation, and control-state mutations outside the movement subsystem.

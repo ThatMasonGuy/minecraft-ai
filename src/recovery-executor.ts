@@ -13,6 +13,7 @@ import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { LootingSystem } from "./looting-system.js";
+import type { MiningSystem } from "./mining-system.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -53,6 +54,7 @@ export class RecoveryExecutor {
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
     private readonly looting: LootingSystem,
+    private readonly mining: MiningSystem,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
@@ -185,12 +187,11 @@ export class RecoveryExecutor {
             "Clearing the recovery route",
             `Collecting obstructing ${waypointBlock.name.replaceAll("_", " ")}`
           );
-          await this.movement.face(
-            waypointBlock.position.offset(0.5, 0.5, 0.5)
-          );
-          if (this.bot.canDigBlock(waypointBlock)) {
-            await this.bot.dig(waypointBlock);
-          }
+          await this.mining.mineBlock({
+            position: waypoint,
+            allowProtected: true,
+            collectAfter: false
+          });
           return;
         }
         if (

@@ -18,6 +18,9 @@ import {
 } from "./navigation.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { InventorySystem } from "./inventory-system.js";
+import type { MiningSystem } from "./mining-system.js";
+import { isReplaceableBlockName } from "./block-classification.js";
+export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-executor.js";
 import type {
   ActivityUpdate,
@@ -29,19 +32,6 @@ import type {
   StructureCheck
 } from "./types.js";
 import { spiralOffset } from "./work-executor.js";
-
-const REPLACEABLE_BLOCKS = new Set([
-  "air",
-  "cave_air",
-  "void_air",
-  "grass",
-  "short_grass",
-  "tall_grass",
-  "fern",
-  "large_fern",
-  "dead_bush",
-  "snow"
-]);
 
 interface SurveyState {
   origin?: Position;
@@ -95,6 +85,7 @@ export class ProjectExecutor {
     private readonly actions: MinecraftActions,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
+    private readonly mining: MiningSystem,
     private readonly tickMs: number,
     private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
@@ -290,7 +281,7 @@ export class ProjectExecutor {
         if (!isSolid(ground?.name, ground?.boundingBox)) return undefined;
         for (let dy = 0; dy < clearanceHeight; dy += 1) {
           const block = this.bot.blockAt(new Vec3(minX + dx, feetY + dy, minZ + dz));
-          if (!block || !REPLACEABLE_BLOCKS.has(block.name)) return undefined;
+          if (!block || !isReplaceableBlockName(block.name)) return undefined;
         }
       }
     }
@@ -1004,7 +995,7 @@ export class ProjectExecutor {
         await this.movement.goNear(next, 2);
       }
       try {
-        state.excavatedBlocks += await this.excavateAndEnter(next, 3);
+        state.excavatedBlocks += await this.mining.excavateAndEnter(next, 3);
         appendTraversalCell(
           state.traversal,
           floorPosition(this.bot.entity.position)
@@ -1138,7 +1129,7 @@ export class ProjectExecutor {
         `route ${state.routeIndex + 1}/${route.length}`
     );
     try {
-      const excavated = await this.excavateAndEnter(next);
+      const excavated = await this.mining.excavateAndEnter(next);
       appendTraversalCell(
         state.traversal,
         floorPosition(this.bot.entity.position)
@@ -1320,8 +1311,8 @@ export class ProjectExecutor {
     const nearest = candidates.sort((a, b) => {
       const aBlock = this.bot.blockAt(new Vec3(a.x, a.y, a.z));
       const bBlock = this.bot.blockAt(new Vec3(b.x, b.y, b.z));
-      const aReachable = aBlock ? this.bot.canDigBlock(aBlock) : false;
-      const bReachable = bBlock ? this.bot.canDigBlock(bBlock) : false;
+      const aReachable = aBlock ? this.mining.canMine(a) : false;
+      const bReachable = bBlock ? this.mining.canMine(b) : false;
       if (aReachable !== bReachable) return aReachable ? -1 : 1;
       return a.distance - b.distance;
     })[0];
@@ -1329,7 +1320,7 @@ export class ProjectExecutor {
     const block = this.bot.blockAt(
       new Vec3(nearest.x, nearest.y, nearest.z)
     );
-    return block && this.bot.canDigBlock(block) ? nearest : undefined;
+    return block && this.mining.canMine(nearest) ? nearest : undefined;
   }
 
   private async ensureMiningFood(
@@ -1482,132 +1473,6 @@ export class ProjectExecutor {
     return true;
   }
 
-  private async excavateAndEnter(
-    target: Position,
-    clearanceHeight = 2
-  ): Promise<number> {
-    let topY = target.y + clearanceHeight - 1;
-    for (let extra = 0; extra < 8; extra += 1) {
-      const above = this.bot.blockAt(
-        new Vec3(target.x, topY + 1, target.z)
-      );
-      if (
-        above?.name !== "sand" &&
-        above?.name !== "red_sand" &&
-        above?.name !== "gravel"
-      ) {
-        break;
-      }
-      topY += 1;
-    }
-    const positions = Array.from(
-      { length: topY - target.y + 1 },
-      (_, index) =>
-        new Vec3(target.x, topY - index, target.z)
-    );
-    let excavated = 0;
-    console.log(
-      `[prospect] Opening ${target.x}, ${target.y}, ${target.z}: ` +
-        positions
-          .map((position) => this.bot.blockAt(position)?.name ?? "unloaded")
-          .join(", ")
-    );
-    for (const position of positions) {
-      let block = this.bot.blockAt(position);
-      if (!block || REPLACEABLE_BLOCKS.has(block.name)) continue;
-      if (block.name === "water" || block.name === "lava") {
-        throw new Error(`unsafe ${block.name} at ${position.x},${position.y},${position.z}`);
-      }
-      if (isProtectedExcavationBlockName(block.name)) {
-        throw new Error(
-          `protected ${block.name} at ${position.x},${position.y},${position.z}`
-        );
-      }
-      if (!this.perception.canSeeBlock(block)) {
-        await this.movement.face(block.position.offset(0.5, 0.5, 0.5));
-        block = this.bot.blockAt(position);
-      }
-      if (!block || !this.bot.canDigBlock(block)) {
-        throw new Error(`cannot excavate ${block?.name ?? "unloaded block"}`);
-      }
-      const tool =
-        this.lowestSufficientPickaxe(block.name) ??
-        this.inventory.bestHarvestTool(block);
-      if (tool) await this.inventory.equip(tool, "hand");
-      await withTimeout(
-        this.bot.dig(block),
-        10_000,
-        () => this.bot.stopDigging()
-      );
-      excavated += 1;
-    }
-    console.log(
-      `[prospect] Entering opened cell ${target.x}, ${target.y}, ${target.z}`
-    );
-    this.movement.hold();
-    if (
-      !this.bot.entity.position
-        .floored()
-        .equals(new Vec3(target.x, target.y, target.z))
-    ) {
-      await this.stepToAdjacentCell(
-        target,
-        target.y > Math.floor(this.bot.entity.position.y)
-      );
-    }
-    const reached = this.bot.entity.position.floored();
-    if (!reached.equals(new Vec3(target.x, target.y, target.z))) {
-      throw new Error(
-        `movement stopped at ${reached.x},${reached.y},${reached.z} instead of ` +
-          `${target.x},${target.y},${target.z}`
-      );
-    }
-    await delay(400);
-    const settled = this.bot.entity.position.floored();
-    if (!settled.equals(new Vec3(target.x, target.y, target.z))) {
-      throw new Error(
-        `physics settled at ${settled.x},${settled.y},${settled.z} instead of ` +
-          `${target.x},${target.y},${target.z}`
-      );
-    }
-    console.log(
-      `[prospect] Reached ${this.bot.entity.position.x.toFixed(2)}, ` +
-        `${this.bot.entity.position.y.toFixed(2)}, ` +
-        `${this.bot.entity.position.z.toFixed(2)}`
-    );
-    return excavated;
-  }
-
-  private lowestSufficientPickaxe(blockName: string) {
-    const minimumRank =
-      blockName.includes("diamond_ore") ||
-      blockName.includes("emerald_ore") ||
-      blockName.includes("gold_ore") ||
-      blockName.includes("redstone_ore")
-        ? 2
-        : blockName.includes("iron_ore") ||
-            blockName.includes("lapis_ore") ||
-            blockName.includes("copper_ore")
-          ? 1
-          : 0;
-    const ranks: Record<string, number> = {
-      wooden_pickaxe: 0,
-      golden_pickaxe: 0,
-      stone_pickaxe: 1,
-      iron_pickaxe: 2,
-      diamond_pickaxe: 3,
-      netherite_pickaxe: 4
-    };
-    return this.inventory
-      .items()
-      .filter(
-        (item) =>
-          ranks[item.name] !== undefined &&
-          ranks[item.name]! >= minimumRank
-      )
-      .sort((a, b) => ranks[a.name]! - ranks[b.name]!)[0];
-  }
-
   private async placeFloorTorch(position: Position): Promise<void> {
     const torch = this.inventory
       .items()
@@ -1618,7 +1483,7 @@ export class ProjectExecutor {
     const floor = this.bot.blockAt(target.offset(0, -1, 0));
     if (
       !existing ||
-      !REPLACEABLE_BLOCKS.has(existing.name) ||
+      !isReplaceableBlockName(existing.name) ||
       !floor ||
       !isSolid(floor.name, floor.boundingBox)
     ) {
@@ -1814,7 +1679,7 @@ export class ProjectExecutor {
       const floor = this.bot.blockAt(target.offset(0, -1, 0));
       if (
         !body ||
-        !REPLACEABLE_BLOCKS.has(body.name) ||
+        !isReplaceableBlockName(body.name) ||
         !floor ||
         !isSolid(floor.name, floor.boundingBox)
       ) {
@@ -1854,7 +1719,7 @@ export class ProjectExecutor {
       .find((item) => item.name === "cobblestone");
     if (
       !existing ||
-      !REPLACEABLE_BLOCKS.has(existing.name) ||
+      !isReplaceableBlockName(existing.name) ||
       !floor ||
       !isSolid(floor.name, floor.boundingBox) ||
       !cobblestone
@@ -2118,7 +1983,7 @@ export class ProjectExecutor {
             const floor = this.bot.blockAt(target.offset(0, -1, 0));
             if (
               !body ||
-              !REPLACEABLE_BLOCKS.has(body.name) ||
+              !isReplaceableBlockName(body.name) ||
               !floor ||
               !isSolid(floor.name, floor.boundingBox)
             ) {
@@ -2146,12 +2011,16 @@ export class ProjectExecutor {
     const target = absolutePosition(anchor, placement);
     const targetVector = new Vec3(target.x, target.y, target.z);
     let existing = this.bot.blockAt(targetVector);
-    if (existing && !REPLACEABLE_BLOCKS.has(existing.name)) {
+    if (existing && !isReplaceableBlockName(existing.name)) {
       throw new Error(`target contains ${existing.name}`);
     }
     if (existing && existing.name !== "air") {
-      if (!this.bot.canDigBlock(existing)) throw new Error(`cannot clear ${existing.name}`);
-      await this.bot.dig(existing);
+      const clearing = await this.mining.mineBlock({
+        position: target,
+        approach: false,
+        collectAfter: false
+      });
+      if (clearing.status === "blocked") throw new Error(clearing.detail);
       existing = this.bot.blockAt(targetVector);
     }
 
@@ -2350,22 +2219,6 @@ function isStorageBlock(name: string): boolean {
   return name === "chest" || name === "trapped_chest" || name === "barrel";
 }
 
-export function isProtectedExcavationBlockName(name: string): boolean {
-  return (
-    name.endsWith("_door") ||
-    name.endsWith("_trapdoor") ||
-    name.endsWith("_fence_gate") ||
-    name.endsWith("_bed") ||
-    name === "chest" ||
-    name === "trapped_chest" ||
-    name === "barrel" ||
-    name === "crafting_table" ||
-    name === "furnace" ||
-    name === "blast_furnace" ||
-    name === "smoker"
-  );
-}
-
 export function foodAnimalPriority(name: string): number {
   switch (name.toLowerCase()) {
     case "cow":
@@ -2401,7 +2254,7 @@ function isSolid(
 ): boolean {
   return Boolean(
     name &&
-      !REPLACEABLE_BLOCKS.has(name) &&
+      !isReplaceableBlockName(name) &&
       name !== "water" &&
       name !== "lava" &&
       boundingBox === "block"
