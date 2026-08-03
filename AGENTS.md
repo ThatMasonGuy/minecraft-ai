@@ -4,14 +4,14 @@
 
 Build a Minecraft player that can perceive, plan, remember, and act autonomously through the project's supported runtime. Progress means a reusable improvement to that system. In-world advancement by itself is test evidence, not project progress.
 
-The OpenAI-powered Minecraft agent is the planner. Deterministic executors are its motor layer. Codex is the engineer and test operator; Codex must not become a substitute Minecraft player.
+The OpenAI-powered Minecraft agent is the planner. Enclosed deterministic systems are its execution layer. Codex is the engineer and test operator; Codex must not become a substitute Minecraft player.
 
 ## Planner granularity boundary
 
 The planner may define outcomes, priorities, constraints, minimum success conditions, and replacement or stopping policy. It must never define motor instructions.
 
 - Never ask the planner to move or look at coordinates, mine or place an individual block, choose a block face, enumerate blueprint placements, craft/equip/consume one step at a time, manipulate a specific slot, or provide a sequence of equivalent low-level instructions.
-- Low-level action methods may exist for deterministic executors, but they must not appear in the planner's callable tool surface. Enforce this with a narrow allowlist and tests; prompt text alone is not sufficient.
+- Low-level operations may exist only inside their owning deterministic subsystem. They must not exist in PlannerTools or appear in the planner's callable tool surface. Enforce this with narrow types and architecture tests; prompt text alone is not sufficient.
 - The planner may delegate only through broad, typed tools such as a gathering outcome. Deterministic code owns source selection, navigation, interaction coordinates, retries, storage choice, decomposition, verification, and continuation.
 - Explicit project JSON and blueprints are operator test fixtures only. Codex must not generate or submit them as a substitute for a missing high-level project compiler.
 - When a broad outcome is unsupported, preserve it as a measurable goal and implement the reusable deterministic compiler or executor. Never temporarily bridge the gap with model-authored coordinates or step-by-step instructions.
@@ -19,7 +19,7 @@ The planner may define outcomes, priorities, constraints, minimum success condit
 
 ## Enclosed subsystem boundaries
 
-Treat combat, movement, building, mining, crafting, storage, recovery, perception, planning, and memory as enclosed systems with explicit public interfaces.
+Treat the systems in `ARCHITECTURE.md` as the canonical ownership registry. Each capability has exactly one implementation owner and is consumed through that owner's public API.
 
 - A subsystem owns its policy, state machine, retries, verification, telemetry, and implementation details. Callers request an outcome through its public interface; they must not reproduce or reach into its internal steps.
 - Shared capabilities belong to the subsystem that conceptually owns them. Combat may request `follow`, `hold`, or `escape` from movement, but must not calculate routes, construct Pathfinder goals, or maintain a second evasion implementation.
@@ -28,6 +28,11 @@ Treat combat, movement, building, mining, crafting, storage, recovery, perceptio
 - Runtime wiring may compose systems and arbitrate ownership, but it must not contain subsystem behavior. Planner and operator surfaces may start or query a system; they must not orchestrate its motor sequence.
 - Tests should exercise each subsystem through its public contract with fakes for adjacent systems. Keep end-to-end tests for integration boundaries rather than using them as the only way to validate internal behavior.
 - Before adding behavior, identify its owning subsystem. If ownership is ambiguous, define or repair the boundary before implementing the behavior.
+- Do not add a generic executor, action module, convenience motor helper, or second implementation beside an existing system. Extend the owning API and route all consumers through it.
+- Raw Mineflayer primitives must appear only in the architecture boundary test's approved owner. Update an allowlist only when ownership genuinely changes, never merely to make a new violation pass.
+- New gameplay owners use the `*-system.ts` convention, expose outcome-shaped methods, accept adjacent systems through narrow interfaces, and receive only a capability-specific persistence port.
+- `runtime.ts` is the composition root. It may construct systems, connect callbacks, and apply execution priority, but it must not absorb gameplay policy.
+- `PlannerTools` is a boundary adapter, not a gameplay system. It must remain Bot-free and may expose only broad outcomes. Do not recreate `actions.ts`.
 - Player combat is outside the combat subsystem's permitted behavior and must not be exposed through configuration, planner tools, or operator tools. A repeated player attack invokes the movement system's escape outcome without retaliation.
 
 ## API cost attribution

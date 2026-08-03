@@ -339,9 +339,9 @@ export class ProjectSystem {
         );
         return;
       }
-      // The work executor owns movement until its active action settles.
+      // AcquisitionSystem owns movement until its active operation settles.
       // Navigating the project return route here would replace its Pathfinder
-      // goal and make both deterministic executors cancel one another.
+      // goal and make both deterministic systems cancel one another.
       if (order.status === "active") return;
     }
 
