@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   plannerRequestCooldownRemainingMs,
+  requiredPlannerToolForTaskType,
   shouldDeferToDeterministicWork
 } from "../src/agent.js";
 
@@ -67,5 +68,15 @@ describe("model decision arbitration", () => {
         now
       )
     ).toBe(0);
+  });
+
+  it("forces explicit shelter planning onto the house delegation tool", () => {
+    expect(requiredPlannerToolForTaskType("shelter")).toBe(
+      "delegate_house_project"
+    );
+    expect(requiredPlannerToolForTaskType("house")).toBe(
+      "delegate_house_project"
+    );
+    expect(requiredPlannerToolForTaskType("scheduled_reflection")).toBeUndefined();
   });
 });

@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Forced explicitly tagged shelter and house planning requests onto the high-level house-design tool so an initial paid call cannot be consumed by chat before creating deterministic work.
 - Replaced coded compact, standard, and spacious house choices with planner-authored connected footprint geometry; autonomous house identity and layout now come from planning while deterministic systems own safe realization.
 - Replaced roaming project-site surveys with nearby scored candidate selection and bounded MiningSystem-owned site clearing; projects now prepare safe loaded terrain instead of repeatedly pathing through spiral waypoints in search of a pre-cleared rectangle.
 - Enforced a hard 15-minute minimum between all planner API requests, stopped tool continuations once deterministic work is active, suppressed every model wake while a recoverable project is progressing, and routed only whole-project completion or irrecoverable blocking back to planning.

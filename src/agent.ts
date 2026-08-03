@@ -254,6 +254,7 @@ export class AutonomousAgent {
       ...this.tools.plannerDefinitions(),
       ...(this.options.webSearchEnabled ? [{ type: "web_search" as const }] : [])
     ];
+    const requiredTool = requiredPlannerToolForTaskType(turn.attribution.taskType);
 
     let tracked = await this.createTrackedResponse(
       {
@@ -268,6 +269,9 @@ export class AutonomousAgent {
           recent_episodic_memories: recentMemories
         }),
         tools,
+        ...(requiredTool
+          ? { tool_choice: { type: "function" as const, name: requiredTool } }
+          : {}),
         reasoning: {
           effort: this.options.reasoningEffort
         },
@@ -686,6 +690,18 @@ export function plannerRequestCooldownRemainingMs(
     0
   );
   return Math.max(0, latestCompletion + minimumIntervalMs - now);
+}
+
+export function requiredPlannerToolForTaskType(
+  taskType: string | undefined
+): string | undefined {
+  switch (taskType?.trim().toLowerCase()) {
+    case "shelter":
+    case "house":
+      return "delegate_house_project";
+    default:
+      return undefined;
+  }
 }
 
 export function continuityGatherPlan(
