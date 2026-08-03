@@ -41,6 +41,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added a coordinate-free high-level project compiler and `delegate_project` planner tool for verified starter shelters and full diamond progressions; deterministic code now owns material/site selection, complete plan generation, goal linking, and validation.
 - Added architecture enforcement against importing the concrete persistence implementation into enclosed subsystems.
 - Added planner-tool delegation coverage and enforcement that rejects motor-system imports, coordinate-level tools, a revived actions module, or goal mutations outside TaskSystem.
 - Added architecture enforcement against outbound chat mutations outside CommunicationSystem.

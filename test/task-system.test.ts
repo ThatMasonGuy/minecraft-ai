@@ -88,6 +88,33 @@ describe("enclosed task lifecycle", () => {
     ).toThrow(TaskSystemError);
     memory.close();
   });
+
+  it("compiles a high-level project and creates its measurable goal", () => {
+    const { memory, tasks } = createTasks();
+    const project = tasks.delegateProject(
+      {
+        kind: "starter_shelter",
+        dimension: "overworld",
+        visibleBlocks: [{ name: "birch_log", distance: 4 }],
+        inventory: []
+      },
+      "planner"
+    );
+
+    expect(project).toMatchObject({
+      origin: "planner",
+      status: "active",
+      title: "Build a compact birch starter house"
+    });
+    expect(project.goalId).toBeDefined();
+    expect(memory.activeGoals()).toContainEqual(
+      expect.objectContaining({
+        id: project.goalId,
+        title: "Establish a verified starter shelter"
+      })
+    );
+    memory.close();
+  });
 });
 
 function createTasks(inventoryCount = 0) {

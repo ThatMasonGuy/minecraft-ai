@@ -5,6 +5,7 @@ import type { SensingSystem } from "./perception.js";
 import type { TaskSystem } from "./task-system.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
 import type { ActionResult } from "./types.js";
+import { HIGH_LEVEL_PROJECT_KINDS } from "./project-compiler.js";
 
 export interface PlannerToolDefinition {
   type: "function";
@@ -21,6 +22,7 @@ const HIGH_LEVEL_PLANNER_TOOLS = new Set([
   "create_goal",
   "finish_goal",
   "delegate_gather",
+  "delegate_project",
   "cancel_work_order"
 ]);
 
@@ -72,6 +74,16 @@ export class PlannerTools {
           item_name: stringSchema("Desired inventory item"),
           minimum_count: numberSchema("Minimum total to gather"),
           continuation: enumSchema(["stop_at_minimum", "until_replaced"])
+        }
+      ),
+      tool(
+        "delegate_project",
+        "Start a supported durable multi-stage project. The deterministic compiler owns site selection, materials, steps, coordinates, verification, and retries.",
+        {
+          goal_id: numberSchema(
+            "Related goal id, or 0 to create and link the default measurable goal"
+          ),
+          outcome: enumSchema([...HIGH_LEVEL_PROJECT_KINDS])
         }
       ),
       tool("cancel_work_order", "Cancel the active deterministic task.", {
@@ -173,6 +185,32 @@ export class PlannerTools {
         return ok(
           `Delegated ${args.minimum_count} ${args.item_name} to deterministic work order ${order.id}`,
           order
+        );
+      }
+      case "delegate_project": {
+        const args = z
+          .object({
+            goal_id: z.number().int().min(0),
+            outcome: z.enum(HIGH_LEVEL_PROJECT_KINDS)
+          })
+          .parse(raw);
+        const snapshot = this.sensing.last() ?? this.sensing.observe();
+        const project = this.tasks.delegateProject(
+          {
+            goalId: args.goal_id === 0 ? undefined : args.goal_id,
+            kind: args.outcome,
+            dimension: snapshot.dimension,
+            visibleBlocks: snapshot.visibleBlocks.map(({ name, distance }) => ({
+              name,
+              distance
+            })),
+            inventory: snapshot.inventory.map(({ name, count }) => ({ name, count }))
+          },
+          "planner"
+        );
+        return ok(
+          `Started deterministic ${args.outcome} project ${project.id}`,
+          project
         );
       }
       case "cancel_work_order": {

@@ -4,9 +4,34 @@ import type {
   RelativePosition
 } from "./types.js";
 
+export const SUPPORTED_WOOD_FAMILIES = [
+  "oak",
+  "spruce",
+  "birch",
+  "jungle",
+  "acacia",
+  "dark_oak",
+  "mangrove",
+  "cherry",
+  "pale_oak"
+] as const;
+
+export type SupportedWoodFamily = (typeof SUPPORTED_WOOD_FAMILIES)[number];
+
 export function generatedBirchStarterHouse(
   goalId: number
 ): ProjectPlanDraft {
+  return generatedStarterHouseProject(goalId, "birch");
+}
+
+export function generatedStarterHouseProject(
+  goalId: number | undefined,
+  woodFamily: SupportedWoodFamily
+): ProjectPlanDraft {
+  const logName = `${woodFamily}_log`;
+  const planksName = `${woodFamily}_planks`;
+  const doorName = `${woodFamily}_door`;
+  const woodLabel = woodFamily.replaceAll("_", " ");
   const wallPlacements: BlueprintPlacement[] = [];
   const doorway = { dx: 2, dz: 0 };
   for (let dy = 0; dy <= 2; dy += 1) {
@@ -16,22 +41,22 @@ export function generatedBirchStarterHouse(
         const doorwayGap =
           dx === doorway.dx && dz === doorway.dz && (dy === 0 || dy === 1);
         if (!boundary || doorwayGap) continue;
-        wallPlacements.push(block(dx, dy, dz, "birch_planks"));
+        wallPlacements.push(block(dx, dy, dz, planksName));
       }
     }
   }
   const roofPlacements: BlueprintPlacement[] = [];
   for (let dz = 0; dz <= 4; dz += 1) {
     for (let dx = 0; dx <= 4; dx += 1) {
-      roofPlacements.push(block(dx, 3, dz, "birch_planks"));
+      roofPlacements.push(block(dx, 3, dz, planksName));
     }
   }
 
   return {
     goalId,
-    title: "Build a compact birch starter house",
+    title: `Build a compact ${woodLabel} starter house`,
     completionSummary:
-      "A verified 5x5 birch shelter has enclosed walls, a complete roof, and a working doorway.",
+      `A verified 5x5 ${woodLabel} shelter has enclosed walls, a complete roof, and a working doorway.`,
     steps: [
       {
         id: "survey_site",
@@ -46,21 +71,21 @@ export function generatedBirchStarterHouse(
         }
       },
       {
-        id: "gather_birch",
-        title: "Gathering birch for the house",
+        id: "gather_wood",
+        title: `Gathering ${woodLabel} for the house`,
         spec: {
           kind: "acquire_item",
-          itemName: "birch_log",
+          itemName: logName,
           targetCount: 23,
-          sourceBlockNames: ["birch_log"]
+          sourceBlockNames: [logName]
         }
       },
       {
         id: "craft_planks",
-        title: "Crafting the birch building palette",
+        title: `Crafting the ${woodLabel} building palette`,
         spec: {
           kind: "craft_item",
-          itemName: "birch_planks",
+          itemName: planksName,
           targetCount: 92
         }
       },
@@ -86,7 +111,7 @@ export function generatedBirchStarterHouse(
         title: "Crafting the front door",
         spec: {
           kind: "craft_item",
-          itemName: "birch_door",
+          itemName: doorName,
           targetCount: 1,
           craftingTableAt: { dx: 2, dy: 0, dz: 2 }
         }
@@ -103,8 +128,8 @@ export function generatedBirchStarterHouse(
               dx: doorway.dx,
               dy: 0,
               dz: doorway.dz,
-              itemName: "birch_door",
-              expectedBlockNames: ["birch_door"]
+              itemName: doorName,
+              expectedBlockNames: [doorName]
             }
           ]
         }
@@ -136,7 +161,7 @@ export function generatedBirchStarterHouse(
             {
               kind: "entrance",
               at: { dx: doorway.dx, dy: 0, dz: doorway.dz },
-              blockNames: ["birch_door"]
+              blockNames: [doorName]
             }
           ]
         }
@@ -146,9 +171,37 @@ export function generatedBirchStarterHouse(
 }
 
 export function generatedMiningProgressionProject(
-  goalId: number,
-  rememberedSite: { x: number; y: number; z: number }
+  goalId: number | undefined,
+  rememberedSite?: { x: number; y: number; z: number },
+  woodFamily: SupportedWoodFamily = "oak"
 ): ProjectPlanDraft {
+  const logName = `${woodFamily}_log`;
+  const planksName = `${woodFamily}_planks`;
+  const initialSteps: ProjectPlanDraft["steps"] = rememberedSite
+    ? [
+        {
+          id: "reuse_home",
+          title: "Returning to the remembered home workshop",
+          spec: {
+            kind: "use_site",
+            position: rememberedSite
+          }
+        }
+      ]
+    : [
+        {
+          id: "survey_workshop",
+          title: "Surveying a safe workshop site",
+          spec: {
+            kind: "survey_site",
+            width: 5,
+            depth: 5,
+            clearanceHeight: 4,
+            maxWaypoints: 96,
+            waypointSpacing: 6
+          }
+        }
+      ];
   const tableAt = relative(2, 0, 2);
   const furnaceAt = relative(3, 0, 2);
   return {
@@ -157,22 +210,15 @@ export function generatedMiningProgressionProject(
     completionSummary:
       "Owned storage and a lit mining progression produced a verified diamond sample without hidden-block knowledge.",
     steps: [
-      {
-        id: "reuse_home",
-        title: "Returning to the remembered home workshop",
-        spec: {
-          kind: "use_site",
-          position: rememberedSite
-        }
-      },
+      ...initialSteps,
       {
         id: "gather_tool_wood",
         title: "Gathering wood for tools and lighting",
         spec: {
           kind: "acquire_item",
-          itemName: "oak_log",
+          itemName: logName,
           targetCount: 5,
-          sourceBlockNames: ["oak_log"]
+          sourceBlockNames: [logName]
         }
       },
       {
@@ -180,7 +226,7 @@ export function generatedMiningProgressionProject(
         title: "Preparing tool materials",
         spec: {
           kind: "craft_item",
-          itemName: "oak_planks",
+          itemName: planksName,
           targetCount: 20
         }
       },

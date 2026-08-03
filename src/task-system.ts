@@ -1,5 +1,10 @@
 import type { AcquisitionSystem } from "./acquisition-system.js";
 import type { InventorySystem } from "./inventory-system.js";
+import {
+  compileHighLevelProject,
+  defaultGoalForProject,
+  type HighLevelProjectRequest
+} from "./project-compiler.js";
 import type { TaskPersistence } from "./persistence-ports.js";
 import {
   validateProjectSemantics
@@ -174,6 +179,24 @@ export class TaskSystem implements TaskLifecycle {
       },
       origin
     );
+  }
+
+  delegateProject(
+    request: HighLevelProjectRequest,
+    origin: TaskOrigin = "planner"
+  ): ProjectPlan {
+    const draft = compileHighLevelProject(request, {
+      ownedContainers: this.memory.ownedContainers(request.dimension)
+    });
+    if (draft.goalId === undefined) {
+      const goalDraft = defaultGoalForProject(request.kind);
+      draft.goalId = this.createGoal(
+        goalDraft.title,
+        goalDraft.rationale,
+        goalDraft.priority
+      ).id;
+    }
+    return this.submitProject(draft, origin);
   }
 
   submitProject(

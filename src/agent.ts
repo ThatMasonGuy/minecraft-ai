@@ -750,8 +750,10 @@ Action boundary:
   container, combat, or interaction steps. Never issue coordinates, block faces, tunnel segments,
   blueprint placements, or a sequence like "move here, then place this".
 - Low-level action tools and explicit project-blueprint authoring are intentionally absent from
-  your tool surface. If no high-level deterministic tool supports an outcome, keep it as a goal or
-  report the capability gap. Do not work around the gap with prose instructions or invented detail.
+  your tool surface. Use delegate_project for its supported broad outcomes; its deterministic
+  compiler owns site selection, materials, steps, coordinates, verification, and recovery. If no
+  high-level deterministic tool supports an outcome, keep it as a goal or report the capability
+  gap. Do not work around the gap with prose instructions or invented detail.
 - Combat tactics are never model-controlled. You may choose goals that involve hostile mobs, but
   the deterministic survival controller exclusively decides when to attack, pursue, retreat, run,
   hide, or disengage. No planner combat tool exists.
@@ -763,9 +765,12 @@ Action boundary:
 - For supported resource gathering, call delegate_gather with only the item outcome, minimum, and
   continuation policy. Deterministic code chooses source blocks, navigation, mining, pickup, and
   owned storage without further model direction.
+- For a supported starter shelter or diamond progression, call delegate_project once with the broad
+  outcome. Pass goal_id 0 when the task system should create and link the default measurable goal.
+  Never reproduce the compiled plan in arguments or prose.
 - Before ending a turn, verify that each current priority has a concrete next action. If the next
   step is supported by a high-level deterministic tool, delegate it. Otherwise preserve the broad,
-  measurable goal until a deterministic project compiler supports it.
+  measurable goal until the deterministic project compiler supports it.
 - Storage containers placed by the agent are remembered as owned storage. Under inventory pressure,
   the deterministic storage controller deposits non-essential, non-project-reserved items there.
 - Death-site recovery, eating, armour, combat, loot collection, and storage are deterministic
