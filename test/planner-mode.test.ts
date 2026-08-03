@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AutonomousAgent } from "../src/agent.js";
-import type { MinecraftActions } from "../src/actions.js";
+import type { PlannerTools } from "../src/planner-tools.js";
 import type { EpisodicMemory } from "../src/memory.js";
 import type { Perception } from "../src/perception.js";
 import {
@@ -20,7 +20,7 @@ describe("planner mode", () => {
     const agent = new AutonomousAgent(
       {} as EpisodicMemory,
       {} as Perception,
-      {} as MinecraftActions,
+      {} as PlannerTools,
       {} as TaskSystem,
       {
         apiKey: "test-key-that-is-long-enough",

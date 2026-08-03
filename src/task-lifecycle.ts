@@ -1,5 +1,6 @@
 import type {
   GatherBlocksWorkSpec,
+  Goal,
   TaskOrigin,
   WorkOrder
 } from "./types.js";
@@ -14,4 +15,9 @@ export interface TaskLifecycle {
     status: "completed" | "blocked" | "cancelled",
     reason: string
   ): WorkOrder;
+  finishGoal(
+    id: number,
+    status: "completed" | "abandoned",
+    summary: string
+  ): Goal;
 }

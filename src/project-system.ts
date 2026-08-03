@@ -1913,7 +1913,11 @@ export class ProjectSystem {
     project.statusReason = project.completionSummary;
     this.memory.saveProject(project);
     if (project.goalId !== undefined) {
-      this.memory.updateGoal(project.goalId, { status: "completed" });
+      this.requireTaskLifecycle().finishGoal(
+        project.goalId,
+        "completed",
+        project.completionSummary
+      );
     }
     this.telemetry.record({
       kind: "project_outcome",

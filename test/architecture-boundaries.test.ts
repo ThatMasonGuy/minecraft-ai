@@ -85,15 +85,51 @@ describe("enclosed subsystem boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps deterministic workflows independent of the planner action adapter", () => {
+  it("keeps deterministic workflows independent of the planner tool adapter", () => {
     for (const name of [
       "acquisition-system.ts",
       "project-system.ts",
       "recovery-system.ts"
     ]) {
       const workflow = fs.readFileSync(path.join(SOURCE_ROOT, name), "utf8");
-      expect(workflow).not.toMatch(/MinecraftActions|actions\.execute/);
+      expect(workflow).not.toMatch(/PlannerTools|plannerTools\.execute|tools\.execute/);
     }
+  });
+
+  it("keeps the planner tool adapter free of motor-system capabilities", () => {
+    const plannerTools = fs.readFileSync(
+      path.join(SOURCE_ROOT, "planner-tools.ts"),
+      "utf8"
+    );
+    expect(fs.existsSync(path.join(SOURCE_ROOT, "actions.ts"))).toBe(false);
+    expect(plannerTools).not.toMatch(
+      /from "mineflayer"|movement-system|inventory-system|mining-system|building-system|production-system|storage-system|survival-system/
+    );
+    expect(plannerTools).not.toMatch(
+      /move_to|mine_visible_block|place_against_visible_block|approach_visible_entity/
+    );
+  });
+
+  it("keeps goal lifecycle mutations in TaskSystem", () => {
+    const allowed = new Set([
+      path.join(SOURCE_ROOT, "memory.ts"),
+      path.join(SOURCE_ROOT, "task-system.ts"),
+      path.join(SOURCE_ROOT, "seed-mining-project.ts")
+    ]);
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            /(?:this\.)?memory\.(?:createGoal|updateGoal)\s*\(/.test(line)
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+    expect(violations).toEqual([]);
   });
 
   it("keeps locomotion, orientation, and control-state mutations in movement", () => {

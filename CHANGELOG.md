@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Replaced the legacy MinecraftActions motor surface with PlannerTools, a Bot-free adapter exposing only communication, memory queries, goal lifecycle, broad gather delegation, and task cancellation; goal mutations now route through TaskSystem as well.
 - Extracted outbound chat and whisper mutations into CommunicationSystem; runtime command responses and planner speech now use the same length-bounded API.
 - Added TelemetrySystem as the single event and activity-emission API for enclosed subsystems, centralizing persistent journals and viewer-channel routing while retaining SQLite exclusively in the persistence implementation and stopped-stack maintenance tools.
 - Completed SensingSystem ownership of loaded-world reads by routing movement collision checks and recovery chunk-lifetime probes through its block and chunk APIs; gameplay systems no longer read Mineflayer's world directly.
@@ -34,6 +35,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added planner-tool delegation coverage and enforcement that rejects motor-system imports, coordinate-level tools, a revived actions module, or goal mutations outside TaskSystem.
 - Added architecture enforcement against outbound chat mutations outside CommunicationSystem.
 - Added focused telemetry routing coverage and architecture enforcement against subsystem-local event/UI callbacks or SQLite access outside persistence infrastructure.
 - Added architecture enforcement against direct loaded-block or chunk-column reads outside SensingSystem and read-only viewer presentation.

@@ -10,6 +10,7 @@ import type { RecoverySystem } from "./recovery-system.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
 import type {
   GatherBlocksWorkSpec,
+  Goal,
   ProjectPlan,
   ProjectPlanDraft,
   TaskOrigin,
@@ -75,6 +76,32 @@ export class TaskSystem implements TaskLifecycle {
     return Boolean(
       status.activeWorkOrder || status.activeProject || status.recoveryActive
     );
+  }
+
+  createGoal(title: string, rationale: string, priority: number): Goal {
+    const goal = this.memory.createGoal(title, rationale, priority);
+    this.telemetry.record({
+      kind: "goal",
+      summary: `Created goal ${goal.id}: ${goal.title}`,
+      payload: { goal },
+      importance: 8
+    });
+    return goal;
+  }
+
+  finishGoal(
+    id: number,
+    status: "completed" | "abandoned",
+    summary: string
+  ): Goal {
+    const goal = this.memory.updateGoal(id, { status });
+    this.telemetry.record({
+      kind: "goal_outcome",
+      summary: `Goal "${goal.title}" ${status}: ${summary}`,
+      payload: { goal, summary },
+      importance: 9
+    });
+    return goal;
   }
 
   submitGather(

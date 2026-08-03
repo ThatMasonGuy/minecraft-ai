@@ -44,6 +44,12 @@ describe("enclosed task lifecycle", () => {
     ]);
     expect(tasks.hasActiveDeterministicTask()).toBe(false);
 
+    const goal = tasks.createGoal("Stock iron", "Support future projects", 80);
+    expect(tasks.finishGoal(goal.id, "completed", "Iron stocked")).toMatchObject({
+      id: goal.id,
+      status: "completed"
+    });
+
     tasks.stop();
     expect(projects.stop).toHaveBeenCalledOnce();
     expect(acquisition.stop).toHaveBeenCalledOnce();

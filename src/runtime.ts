@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import mineflayer, { type Bot } from "mineflayer";
 import { loader as autoEat } from "mineflayer-auto-eat";
-import { MinecraftActions } from "./actions.js";
+import { PlannerTools } from "./planner-tools.js";
 import { AutonomousAgent } from "./agent.js";
 import { CombatSystem } from "./combat-system.js";
 import { config } from "./config.js";
@@ -336,22 +336,14 @@ export class MinecraftRuntime {
         recoverySystem
       );
       this.taskSystem = taskSystem;
-      const actions = new MinecraftActions(
-        bot,
+      const plannerTools = new PlannerTools(
         this.memory,
         perception,
-        movementSystem,
-        inventorySystem,
-        miningSystem,
-        buildingSystem,
-        productionSystem,
-        storageSystem,
-        survivalSystem,
         taskSystem,
         communication,
-        config.maxMoveDistance
+        telemetry
       );
-      this.agent = new AutonomousAgent(this.memory, perception, actions, taskSystem, {
+      this.agent = new AutonomousAgent(this.memory, perception, plannerTools, taskSystem, {
         apiKey: config.openaiApiKey,
         model: config.openaiModel,
         reasoningEffort: config.reasoningEffort,

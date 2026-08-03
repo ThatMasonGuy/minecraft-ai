@@ -6,8 +6,8 @@ import type {
 } from "openai/resources/responses/responses";
 import {
   isHighLevelPlannerTool,
-  type MinecraftActions
-} from "./actions.js";
+  type PlannerTools
+} from "./planner-tools.js";
 import type {
   ApiTriggerSource,
   ApiUsageAttribution,
@@ -74,7 +74,7 @@ export class AutonomousAgent {
   constructor(
     private readonly memory: EpisodicMemory,
     private readonly perception: Perception,
-    private readonly actions: MinecraftActions,
+    private readonly tools: PlannerTools,
     private readonly tasks: TaskSystem,
     private readonly options: AgentOptions
   ) {
@@ -233,7 +233,7 @@ export class AutonomousAgent {
     const workOrder = this.memory.activeWorkOrder();
     const project = this.memory.activeProject();
     const tools = [
-      ...this.actions.plannerDefinitions(),
+      ...this.tools.plannerDefinitions(),
       ...(this.options.webSearchEnabled ? [{ type: "web_search" as const }] : [])
     ];
 
@@ -359,7 +359,7 @@ export class AutonomousAgent {
             importance: 10
           });
         } else {
-          result = await this.actions.execute(call.name, parsedArguments);
+          result = await this.tools.execute(call.name, parsedArguments);
         }
         console.log(`[action] ${call.name}: ${result.message}`);
         outputs.push({
