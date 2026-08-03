@@ -60,6 +60,7 @@ const ALWAYS_ESCAPE = new Set([
   "zoglin"
 ]);
 const RANGED_HOSTILES = new Set(["bogged", "skeleton", "stray"]);
+const UNARMED_FIGHT_TARGETS = new Set(["zombie", "zombie_villager"]);
 const LONG_RANGE_HOSTILES = new Set([
   ...RANGED_HOSTILES,
   "blaze",
@@ -591,6 +592,11 @@ export class CombatSystem {
       confirmedHits: 0
     };
     this.execution?.claim();
+    this.telemetry.activity("combat", {
+      phase: "acting",
+      label: `Responding to ${targetName}`,
+      detail: trigger
+    });
     this.telemetry.record({
       kind: "combat",
       summary: `Combat response started for ${targetName}: ${trigger}`,
@@ -839,7 +845,10 @@ export function decideCombat(assessment: CombatAssessment): CombatDecision {
   if (ALWAYS_ESCAPE.has(targetName)) {
     return { action: "escape", reason: `${targetName} requires an escape response` };
   }
-  if (!assessment.weaponName || !weaponProfile(assessment.weaponName)) {
+  if (
+    (!assessment.weaponName || !weaponProfile(assessment.weaponName)) &&
+    !UNARMED_FIGHT_TARGETS.has(targetName)
+  ) {
     return { action: "escape", reason: "No effective melee weapon is carried" };
   }
   const minimumHealth = assessment.armorPieces >= 3 ? 10 : 13;

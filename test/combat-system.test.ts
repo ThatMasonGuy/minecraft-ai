@@ -14,10 +14,22 @@ import {
 } from "../src/entity-classification.js";
 
 describe("combat policy", () => {
-  it("refuses voluntary unarmed zombie combat", () => {
+  it("fights a single ordinary zombie when healthy even without a weapon", () => {
     expect(
       decideCombat({
         targetName: "zombie",
+        health: 20,
+        armorPieces: 0,
+        nearbyHostiles: 1,
+        hasShield: false
+      })
+    ).toEqual({ action: "fight" });
+  });
+
+  it("does not generalize unarmed fighting to faster or ranged hostiles", () => {
+    expect(
+      decideCombat({
+        targetName: "spider",
         health: 20,
         armorPieces: 0,
         nearbyHostiles: 1,
