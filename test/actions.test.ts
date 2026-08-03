@@ -14,6 +14,7 @@ import type { ProductionSystem } from "../src/production-system.js";
 import type { StorageSystem } from "../src/storage-system.js";
 import type { SurvivalSystem } from "../src/survival-system.js";
 import type { TaskSystem } from "../src/task-system.js";
+import type { CommunicationSystem } from "../src/communication-system.js";
 
 describe("planner action boundary", () => {
   it("exposes only high-level outcome tools to the planner", () => {
@@ -29,6 +30,7 @@ describe("planner action boundary", () => {
       {} as StorageSystem,
       {} as SurvivalSystem,
       {} as TaskSystem,
+      {} as CommunicationSystem,
       32
     );
     const names = actions.plannerDefinitions().map((definition) => definition.name);

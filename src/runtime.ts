@@ -38,6 +38,7 @@ import { ViewerStatusStore } from "./viewer-status.js";
 import { AcquisitionSystem } from "./acquisition-system.js";
 import { TaskSystem } from "./task-system.js";
 import { PersistentTelemetrySystem } from "./telemetry-system.js";
+import { MineflayerCommunicationSystem } from "./communication-system.js";
 
 const require = createRequire(import.meta.url);
 const { pathfinder } = require(
@@ -119,6 +120,7 @@ export class MinecraftRuntime {
   }
 
   private attachLifecycle(bot: Bot): void {
+    const communication = new MineflayerCommunicationSystem(bot);
     bot.once("spawn", async () => {
       const telemetry = new PersistentTelemetrySystem(this.memory, {
         agent: (activity) => this.viewerStatus.setAgent(activity),
@@ -346,6 +348,7 @@ export class MinecraftRuntime {
         storageSystem,
         survivalSystem,
         taskSystem,
+        communication,
         config.maxMoveDistance
       );
       this.agent = new AutonomousAgent(this.memory, perception, actions, taskSystem, {
@@ -434,16 +437,16 @@ export class MinecraftRuntime {
           "operator"
         ) ?? [];
         if (cancelled.length > 0) {
-          bot.chat(`Paused ${cancelled.length} deterministic task(s).`);
+          communication.say(`Paused ${cancelled.length} deterministic task(s).`);
         } else {
-          bot.chat("There is no active deterministic task.");
+          communication.say("There is no active deterministic task.");
         }
         return;
       }
       const planning = parsePlanningCommand(message);
       if (planning.matched) {
         if (!planning.task) {
-          bot.chat("Usage: !plan <task>");
+          communication.say("Usage: !plan <task>");
           return;
         }
         this.agent?.wake(
@@ -478,7 +481,7 @@ export class MinecraftRuntime {
       const planning = parsePlanningCommand(message);
       if (planning.matched) {
         if (!planning.task) {
-          bot.whisper(username, "Usage: !plan <task>");
+          communication.whisper(username, "Usage: !plan <task>");
           return;
         }
         this.agent?.wake(

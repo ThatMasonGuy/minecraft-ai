@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Extracted outbound chat and whisper mutations into CommunicationSystem; runtime command responses and planner speech now use the same length-bounded API.
 - Added TelemetrySystem as the single event and activity-emission API for enclosed subsystems, centralizing persistent journals and viewer-channel routing while retaining SQLite exclusively in the persistence implementation and stopped-stack maintenance tools.
 - Completed SensingSystem ownership of loaded-world reads by routing movement collision checks and recovery chunk-lifetime probes through its block and chunk APIs; gameplay systems no longer read Mineflayer's world directly.
 - Added TaskSystem as the sole runtime lifecycle API for broad gather delegation, durable project submission, project-owned acquisition, cancellation, active-task status, and workflow startup/shutdown; planner, operator, chat, project, and budget-continuity paths now submit through it.
@@ -33,6 +34,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added architecture enforcement against outbound chat mutations outside CommunicationSystem.
 - Added focused telemetry routing coverage and architecture enforcement against subsystem-local event/UI callbacks or SQLite access outside persistence infrastructure.
 - Added architecture enforcement against direct loaded-block or chunk-column reads outside SensingSystem and read-only viewer presentation.
 - Added focused task-lifecycle and operator integration coverage plus enforcement against task creation or cancellation outside TaskSystem, excluding explicit offline seed commands.

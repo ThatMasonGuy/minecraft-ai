@@ -20,6 +20,7 @@ import {
   deterministicGatherSources,
   type TaskSystem
 } from "./task-system.js";
+import type { CommunicationSystem } from "./communication-system.js";
 export { deterministicGatherSources } from "./task-system.js";
 import type { ActionResult, PerceptionSnapshot } from "./types.js";
 import { isRecognizedHostileName } from "./entity-classification.js";
@@ -46,6 +47,7 @@ export class MinecraftActions {
     private readonly storage: StorageSystem,
     private readonly survival: SurvivalSystem,
     private readonly tasks: TaskSystem,
+    private readonly communication: CommunicationSystem,
     private readonly maxMoveDistance: number
   ) {}
 
@@ -247,7 +249,7 @@ export class MinecraftActions {
         return ok("Perception refreshed", this.perception.observe());
       case "speak": {
         const { message } = z.object({ message: z.string().min(1).max(240) }).parse(raw);
-        this.bot.chat(message);
+        this.communication.say(message);
         return ok(`Said: ${message}`);
       }
       case "wait": {
