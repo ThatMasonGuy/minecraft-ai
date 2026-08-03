@@ -15,6 +15,7 @@ describe("operator HTTP API", () => {
     const memory = new EpisodicMemory(path.join(directory, "memory.sqlite"));
     const tasks = new TaskSystem(
       memory,
+      { record: (event) => memory.record(event), activity: () => undefined },
       { count: () => 3 } as never,
       {
         start: () => undefined,

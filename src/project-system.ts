@@ -37,6 +37,7 @@ import type {
   StructureCheck
 } from "./types.js";
 import { spiralOffset } from "./acquisition-system.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 
 interface SurveyState {
   origin?: Position;
@@ -87,6 +88,7 @@ export class ProjectSystem {
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly perception: Perception,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
@@ -97,7 +99,6 @@ export class ProjectSystem {
     private readonly survival: SurvivalSystem,
     private readonly combat: CombatSystem,
     private readonly tickMs: number,
-    private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
   ) {}
@@ -1066,7 +1067,7 @@ export class ProjectSystem {
         (state.rebases ?? 0) < MAX_PROSPECT_REBASES
       ) {
         this.rebaseProspectRoute(project, state, spec, settled);
-        this.memory.record({
+        this.telemetry.record({
           kind: "project_progress",
           summary:
             `${project.title}: continuing ${spec.itemName} prospecting ` +
@@ -1170,7 +1171,7 @@ export class ProjectSystem {
       rewindProjectForInventoryLoss(project)
     ) {
       const resumed = this.memory.saveProject(project);
-      this.memory.record({
+      this.telemetry.record({
         kind: "project_recovery",
         summary:
           `${project.title}: replaying its authored supply chain after ` +
@@ -1191,7 +1192,7 @@ export class ProjectSystem {
       project.status = "active";
       project.statusReason = undefined;
       const resumed = this.memory.saveProject(project);
-      this.memory.record({
+      this.telemetry.record({
         kind: "project_recovery",
         summary:
           `${project.title}: retrying ${step.title} through its planned ` +
@@ -1218,7 +1219,7 @@ export class ProjectSystem {
     project.status = "active";
     project.statusReason = undefined;
     const resumed = this.memory.saveProject(project);
-    this.memory.record({
+    this.telemetry.record({
       kind: "project_recovery",
       summary:
         `${project.title}: rebased a blocked prospect route at ` +
@@ -1900,7 +1901,7 @@ export class ProjectSystem {
     step.statusReason = reason;
     project.currentStepIndex += 1;
     this.memory.saveProject(project);
-    this.memory.record({
+    this.telemetry.record({
       kind: "project_step",
       summary: `${project.title}: ${step.title} completed - ${reason}`,
       importance: 7
@@ -1914,7 +1915,7 @@ export class ProjectSystem {
     if (project.goalId !== undefined) {
       this.memory.updateGoal(project.goalId, { status: "completed" });
     }
-    this.memory.record({
+    this.telemetry.record({
       kind: "project_outcome",
       summary: `${project.title} completed: ${project.completionSummary}`,
       importance: 10
@@ -1932,7 +1933,7 @@ export class ProjectSystem {
     project.status = "blocked";
     project.statusReason = reason;
     this.memory.saveProject(project);
-    this.memory.record({
+    this.telemetry.record({
       kind: "project_outcome",
       summary: `${project.title} blocked: ${reason}`,
       importance: 9
@@ -1945,7 +1946,7 @@ export class ProjectSystem {
     label: string,
     detail?: string
   ): void {
-    this.onActivity?.({ phase, label, detail });
+    this.telemetry.activity("project", { phase, label, detail });
   }
 
   private log(key: string, message: string): void {

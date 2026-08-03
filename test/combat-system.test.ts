@@ -156,7 +156,7 @@ describe("player aggression escape", () => {
         destination: { x: -10, y: 64, z: 0 }
       }))
     };
-    const memory = { record: vi.fn() };
+    const memory = { record: vi.fn(), activity: vi.fn() };
     const sensing = {
       visibleEntitiesRaw: () => [player],
       hasLineOfSight: () => true
@@ -243,7 +243,7 @@ describe("combat API ownership", () => {
         activateItem: vi.fn(),
         deactivateItem: vi.fn()
       }) as never,
-      { record: vi.fn() } as never,
+      { record: vi.fn(), activity: vi.fn() } as never,
       { hold: vi.fn() } as never,
       {
         entityById: (id: number) => entities.get(id),
@@ -327,7 +327,7 @@ describe("enclosed combat movement", () => {
     };
     const combat = new CombatSystem(
       bot as never,
-      { record: vi.fn() } as never,
+      { record: vi.fn(), activity: vi.fn() } as never,
       movement,
       {
         visibleEntitiesRaw: () => [zombie],

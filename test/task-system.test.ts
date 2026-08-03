@@ -93,6 +93,7 @@ function createTasks(inventoryCount = 0) {
   const recovery = { start: vi.fn(), stop: vi.fn(), isActive: () => false };
   const tasks = new TaskSystem(
     memory,
+    { record: (event) => memory.record(event), activity: () => undefined },
     { count: () => inventoryCount } as never,
     acquisition as never,
     projects as never,

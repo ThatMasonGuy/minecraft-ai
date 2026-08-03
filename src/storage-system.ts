@@ -4,6 +4,7 @@ import type { InventorySystem } from "./inventory-system.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 import type {
   ActivityUpdate,
   OwnedContainer,
@@ -40,10 +41,10 @@ export class MineflayerStorageSystem implements StorageSystem {
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly sensing: SensingSystem,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
-    private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPause?: () => boolean,
     private readonly execution?: ExecutionScope
   ) {}
@@ -96,7 +97,7 @@ export class MineflayerStorageSystem implements StorageSystem {
     const owned = this.ownedAt(position);
     if (owned) {
       this.memory.recordContainerDeposit(owned.id, itemName, stored);
-      this.memory.record({
+      this.telemetry.record({
         kind: "storage",
         summary: `Stored ${stored} ${itemName} in owned container ${owned.id}`,
         position: owned.position,
@@ -203,7 +204,7 @@ export class MineflayerStorageSystem implements StorageSystem {
     label: string,
     detail?: string
   ): void {
-    this.onActivity?.({ phase, label, detail });
+    this.telemetry.activity("storage", { phase, label, detail });
   }
 }
 

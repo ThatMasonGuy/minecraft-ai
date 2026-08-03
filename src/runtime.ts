@@ -37,6 +37,7 @@ import { startViewerServer, type ViewerServer } from "./viewer-server.js";
 import { ViewerStatusStore } from "./viewer-status.js";
 import { AcquisitionSystem } from "./acquisition-system.js";
 import { TaskSystem } from "./task-system.js";
+import { PersistentTelemetrySystem } from "./telemetry-system.js";
 
 const require = createRequire(import.meta.url);
 const { pathfinder } = require(
@@ -119,6 +120,29 @@ export class MinecraftRuntime {
 
   private attachLifecycle(bot: Bot): void {
     bot.once("spawn", async () => {
+      const telemetry = new PersistentTelemetrySystem(this.memory, {
+        agent: (activity) => this.viewerStatus.setAgent(activity),
+        combat: (activity) => this.viewerStatus.setCombat(activity),
+        storage: (activity) => this.viewerStatus.setWork(activity),
+        recovery: (activity) => this.viewerStatus.setWork(activity),
+        acquisition: (activity) => {
+          if (
+            !this.recoverySystem?.isActive() &&
+            !this.storageSystem?.isActive() &&
+            (activity.phase !== "idle" || !this.memory.activeProject())
+          ) {
+            this.viewerStatus.setWork(activity);
+          }
+        },
+        project: (activity) => {
+          if (
+            !this.recoverySystem?.isActive() &&
+            !this.storageSystem?.isActive()
+          ) {
+            this.viewerStatus.setWork(activity);
+          }
+        }
+      });
       const inventorySystem = new MineflayerInventorySystem(bot);
       this.inventorySystem = inventorySystem;
       const perception = new Perception(
@@ -154,7 +178,7 @@ export class MinecraftRuntime {
       );
       const survivalSystem = new MineflayerSurvivalSystem(
         bot,
-        this.memory,
+        telemetry,
         perception,
         movementSystem,
         inventorySystem,
@@ -177,7 +201,7 @@ export class MinecraftRuntime {
       movementSystem.setTraversalPlacement(buildingSystem);
       const lootingSystem = new MineflayerLootingSystem(
         bot,
-        this.memory,
+        telemetry,
         perception,
         movementSystem
       );
@@ -188,13 +212,12 @@ export class MinecraftRuntime {
       survivalSystem.start();
       const combatSystem = new CombatSystem(
         bot,
-        this.memory,
+        telemetry,
         movementSystem,
         perception,
         inventorySystem,
         lootingSystem,
         survivalSystem,
-        (activity) => this.viewerStatus.setCombat(activity),
         executionCoordinator.scope(
           "combat",
           () => this.combatSystem?.isActive() ?? false
@@ -223,10 +246,10 @@ export class MinecraftRuntime {
       const storageSystem = new MineflayerStorageSystem(
         bot,
         this.memory,
+        telemetry,
         perception,
         movementSystem,
         inventorySystem,
-        (activity) => this.viewerStatus.setWork(activity),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false),
@@ -239,13 +262,13 @@ export class MinecraftRuntime {
       const recoverySystem = new RecoverySystem(
         bot,
         this.memory,
+        telemetry,
         movementSystem,
         perception,
         inventorySystem,
         lootingSystem,
         miningSystem,
         storageSystem,
-        (activity) => this.viewerStatus.setWork(activity),
         () => this.combatSystem?.isActive() ?? false,
         executionCoordinator.scope(
           "recovery",
@@ -255,6 +278,7 @@ export class MinecraftRuntime {
       this.recoverySystem = recoverySystem;
       const acquisitionSystem = new AcquisitionSystem(
         this.memory,
+        telemetry,
         perception,
         movementSystem,
         miningSystem,
@@ -267,15 +291,6 @@ export class MinecraftRuntime {
             triggerSource: "executor",
             taskType: "work_order"
           }),
-        (activity) => {
-          if (
-            !this.recoverySystem?.isActive() &&
-            !this.storageSystem?.isActive() &&
-            (activity.phase !== "idle" || !this.memory.activeProject())
-          ) {
-            this.viewerStatus.setWork(activity);
-          }
-        },
         () =>
           (this.combatSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false) ||
@@ -289,6 +304,7 @@ export class MinecraftRuntime {
       const projectSystem = new ProjectSystem(
         bot,
         this.memory,
+        telemetry,
         perception,
         movementSystem,
         inventorySystem,
@@ -299,14 +315,6 @@ export class MinecraftRuntime {
         survivalSystem,
         combatSystem,
         config.workExecutorTickMs,
-        (activity) => {
-          if (
-            !this.recoverySystem?.isActive() &&
-            !this.storageSystem?.isActive()
-          ) {
-            this.viewerStatus.setWork(activity);
-          }
-        },
         () =>
           (this.combatSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false) ||
@@ -319,6 +327,7 @@ export class MinecraftRuntime {
       this.projectSystem = projectSystem;
       const taskSystem = new TaskSystem(
         this.memory,
+        telemetry,
         inventorySystem,
         acquisitionSystem,
         projectSystem,

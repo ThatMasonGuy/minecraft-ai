@@ -4,10 +4,10 @@ import {
   droppedItem,
   isDroppedItemEntity
 } from "./entity-classification.js";
-import type { EpisodicMemory } from "./memory.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
 import type { Position } from "./types.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 
 export interface LootCollectionRequest {
   sessionId: string;
@@ -39,7 +39,7 @@ export class MineflayerLootingSystem implements LootingSystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly sensing: SensingSystem,
     private readonly movement: Pick<MovementSystem, "approach">
   ) {}
@@ -100,7 +100,7 @@ export class MineflayerLootingSystem implements LootingSystem {
       session.collectedCount += item.count;
       session.noLootSince = undefined;
     }
-    this.memory.record({
+    this.telemetry.record({
       kind: "loot",
       summary: `Collected dropped ${item.name}`,
       payload: { itemName: item.name, count: item.count },

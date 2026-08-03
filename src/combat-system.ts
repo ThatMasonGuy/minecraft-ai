@@ -8,16 +8,16 @@ import {
   isRecognizedHostile,
   normalizedEntityName
 } from "./entity-classification.js";
-import type { EpisodicMemory } from "./memory.js";
 import type {
   CombatMovementSystem,
   MovementDanger
 } from "./movement-system.js";
-import type { ActivityUpdate, Position } from "./types.js";
+import type { Position } from "./types.js";
 import type { SensingSystem } from "./perception.js";
 import type { InventorySystem } from "./inventory-system.js";
 import type { LootingSystem } from "./looting-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 
 const ATTACK_RANGE = 3.15;
 const FOLLOW_RANGE = 2.7;
@@ -129,13 +129,12 @@ export class CombatSystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly movement: CombatMovementSystem,
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
     private readonly looting: LootingSystem,
     private readonly survival: SurvivalSystem,
-    private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly execution?: ExecutionScope
   ) {}
 
@@ -245,7 +244,7 @@ export class CombatSystem {
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      this.onActivity?.({
+      this.telemetry.activity("combat", {
         phase: "error",
         label: "Combat system error",
         detail
@@ -356,7 +355,7 @@ export class CombatSystem {
       this.mode = "recovering";
       this.recoveryStartedAt = Date.now();
       this.movement.hold();
-      this.onActivity?.({
+      this.telemetry.activity("combat", {
         phase: "waiting",
         label: "Recovering after escape",
         detail: "Holding a safe gap before returning to ordinary work"
@@ -365,7 +364,7 @@ export class CombatSystem {
     }
 
     if (result.status === "blocked") {
-      this.onActivity?.({
+      this.telemetry.activity("combat", {
         phase: "acting",
         label: "Escaping combat",
         detail: result.detail
@@ -432,7 +431,7 @@ export class CombatSystem {
       return;
     }
     if (result.status !== "moving") return;
-    this.onActivity?.({
+    this.telemetry.activity("combat", {
       phase: "acting",
       label: "Collecting combat drops",
       detail: result.displayName ?? result.itemName ?? "Nearby drops"
@@ -491,7 +490,7 @@ export class CombatSystem {
     this.playerHits.set(key, { count, lastHitAt: now });
 
     if (count < 2) {
-      this.memory.record({
+      this.telemetry.record({
         kind: "combat_warning",
         summary: `${player.username ?? "A player"} hit the bot; player combat remains disabled`,
         payload: { player: player.username, hitCount: count },
@@ -571,7 +570,7 @@ export class CombatSystem {
       confirmedHits: 0
     };
     this.execution?.claim();
-    this.memory.record({
+    this.telemetry.record({
       kind: "combat",
       summary: `Combat response started for ${targetName}: ${trigger}`,
       payload: {
@@ -589,7 +588,7 @@ export class CombatSystem {
   private finishEncounter(outcome: string, detail: string): void {
     const encounter = this.encounter;
     if (!encounter) return;
-    this.memory.record({
+    this.telemetry.record({
       kind: "combat",
       summary: `Combat response ended for ${encounter.targetName}: ${outcome}`,
       payload: {
@@ -680,7 +679,7 @@ export class CombatSystem {
     this.lowerShield();
     this.survival.resumeAutoCare();
     this.execution?.claim();
-    this.onActivity?.({
+    this.telemetry.activity("combat", {
       phase: "acting",
       label: this.playerAggressor
         ? "Escaping player aggression"
@@ -770,7 +769,7 @@ export class CombatSystem {
     this.recoveryStartedAt = 0;
     this.nextAttackAt = 0;
     if (report) {
-      this.onActivity?.({
+      this.telemetry.activity("combat", {
         phase: "idle",
         label: "No immediate combat threat",
         detail

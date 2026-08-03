@@ -12,6 +12,47 @@ function sourceFiles(): string[] {
 }
 
 describe("enclosed subsystem boundaries", () => {
+  it("routes subsystem events and activity through TelemetrySystem", () => {
+    const violations = sourceFiles()
+      .filter((file) => file.endsWith("-system.ts"))
+      .filter((file) => !file.endsWith("telemetry-system.ts"))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            /this\.memory\.record\s*\(|onActivity/.test(line)
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps SQLite access in persistence and stopped-stack maintenance", () => {
+    const allowed = new Set([
+      path.join(SOURCE_ROOT, "memory.ts"),
+      path.join(SOURCE_ROOT, "world-state.ts")
+    ]);
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            /DatabaseSync|node:sqlite/.test(line)
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps broad task submission and cancellation in TaskSystem", () => {
     const allowedSubmission = new Set([
       path.join(SOURCE_ROOT, "memory.ts"),

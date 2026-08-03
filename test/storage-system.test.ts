@@ -36,6 +36,7 @@ describe("storage authority", () => {
     const storage = new MineflayerStorageSystem(
       bot as never,
       memory as never,
+      { record: memory.record, activity: vi.fn() } as never,
       { blockAt: () => ({ name: "chest" }) } as never,
       { positionForBlock: vi.fn(async () => undefined) } as never,
       inventory as never
@@ -61,6 +62,7 @@ describe("storage authority", () => {
     const storage = new MineflayerStorageSystem(
       bot as never,
       { ownedContainers: () => [] } as never,
+      { record: vi.fn(), activity: vi.fn() } as never,
       {} as never,
       {} as never,
       {} as never

@@ -6,6 +6,7 @@ import type { MovementSystem } from "./movement-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
 import type { TaskLifecycle } from "./task-lifecycle.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 import type {
   ActivityUpdate,
   PerceptionSnapshot,
@@ -40,6 +41,7 @@ export class AcquisitionSystem {
 
   constructor(
     private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly perception: Perception,
     private readonly movement: MovementSystem,
     private readonly mining: MiningSystem,
@@ -47,7 +49,6 @@ export class AcquisitionSystem {
     private readonly survival: SurvivalSystem,
     private readonly tickMs: number,
     private readonly requestReplan: (reason: string) => void,
-    private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
   ) {}
@@ -153,7 +154,7 @@ export class AcquisitionSystem {
           `Work order ${order.id} reached its minimum: gathered ` +
           `${order.progressCount}/${order.spec.minimumCount} ` +
           `${order.spec.itemName}`;
-        this.memory.record({
+        this.telemetry.record({
           kind: "work_order_milestone",
           summary,
           importance: 8
@@ -223,7 +224,7 @@ export class AcquisitionSystem {
     this.excludedSources.delete(id);
     this.storageFailures.delete(id);
     this.requireTaskLifecycle().finishWorkOrder(id, "completed", reason);
-    this.memory.record({
+    this.telemetry.record({
       kind: "work_order_outcome",
       summary: `Work order ${id} completed: ${reason}`,
       importance: 8
@@ -240,7 +241,7 @@ export class AcquisitionSystem {
     this.excludedSources.delete(id);
     this.storageFailures.delete(id);
     this.requireTaskLifecycle().finishWorkOrder(id, "blocked", reason);
-    this.memory.record({
+    this.telemetry.record({
       kind: "work_order_outcome",
       summary: `Work order ${id} blocked: ${reason}`,
       importance: 8
@@ -404,7 +405,7 @@ export class AcquisitionSystem {
     label: string,
     detail?: string
   ): void {
-    this.onActivity?.({ phase, label, detail });
+    this.telemetry.activity("acquisition", { phase, label, detail });
   }
 
   private requireTaskLifecycle(): TaskLifecycle {

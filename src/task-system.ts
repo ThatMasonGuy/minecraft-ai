@@ -7,6 +7,7 @@ import {
 import type { ProjectSystem } from "./project-system.js";
 import type { TaskLifecycle } from "./task-lifecycle.js";
 import type { RecoverySystem } from "./recovery-system.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 import type {
   GatherBlocksWorkSpec,
   ProjectPlan,
@@ -39,6 +40,7 @@ export class TaskSystemError extends Error {}
 export class TaskSystem implements TaskLifecycle {
   constructor(
     private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly inventory: InventorySystem,
     private readonly acquisition: AcquisitionSystem,
     private readonly projects: ProjectSystem,
@@ -174,7 +176,7 @@ export class TaskSystem implements TaskLifecycle {
       this.memory.saveProject(project);
       cancelled.push({ type: "project", id: project.id });
     }
-    this.memory.record({
+    this.telemetry.record({
       kind: origin === "operator" ? "operator_task_cancelled" : "task_cancelled",
       summary:
         cancelled.length > 0
@@ -193,7 +195,7 @@ export class TaskSystem implements TaskLifecycle {
     id: number,
     input: unknown
   ): void {
-    this.memory.record({
+    this.telemetry.record({
       kind: origin === "operator" ? "operator_task" : "planner_task",
       summary: `${origin} submitted ${taskType} task ${id}`,
       payload: { taskType, taskId: id, input, origin },

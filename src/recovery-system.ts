@@ -14,6 +14,7 @@ import type { InventorySystem } from "./inventory-system.js";
 import type { LootingSystem } from "./looting-system.js";
 import type { MiningSystem } from "./mining-system.js";
 import type { StorageSystem } from "./storage-system.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 
 // Item age only advances while its chunk is ticking. A distant death site can
 // remain recoverable well beyond five minutes of wall time.
@@ -49,13 +50,13 @@ export class RecoverySystem {
   constructor(
     private readonly bot: Bot,
     private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly movement: MovementSystem,
     private readonly sensing: SensingSystem,
     private readonly inventory: InventorySystem,
     private readonly looting: LootingSystem,
     private readonly mining: MiningSystem,
     private readonly storage: StorageSystem,
-    private readonly onActivity?: (activity: ActivityUpdate) => void,
     private readonly shouldPauseForDefense?: () => boolean,
     private readonly execution?: ExecutionScope
   ) {}
@@ -462,7 +463,7 @@ export class RecoverySystem {
             this.memory.saveProject(project);
           } else if (rewindProjectForInventoryLoss(project)) {
             this.memory.saveProject(project);
-            this.memory.record({
+            this.telemetry.record({
               kind: "project_recovery",
               summary:
                 `${project.title}: replaying the planned material and tool ` +
@@ -473,7 +474,7 @@ export class RecoverySystem {
         }
       }
     }
-    this.memory.record({
+    this.telemetry.record({
       kind: "recovery",
       summary: reason,
       position: {
@@ -546,7 +547,7 @@ export class RecoverySystem {
     label: string,
     detail?: string
   ): void {
-    this.onActivity?.({ phase, label, detail });
+    this.telemetry.activity("recovery", { phase, label, detail });
   }
 }
 

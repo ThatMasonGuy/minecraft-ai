@@ -1,9 +1,9 @@
 import type { Bot } from "mineflayer";
 import type { InventorySystem } from "./inventory-system.js";
-import type { EpisodicMemory } from "./memory.js";
 import type { MovementSystem } from "./movement-system.js";
 import type { SensingSystem } from "./perception.js";
 import type { Position } from "./types.js";
+import type { TelemetrySystem } from "./telemetry-system.js";
 
 export interface SurvivalSnapshot {
   health: number;
@@ -35,7 +35,7 @@ export class MineflayerSurvivalSystem implements SurvivalSystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly memory: EpisodicMemory,
+    private readonly telemetry: TelemetrySystem,
     private readonly sensing: SensingSystem,
     private readonly movement: MovementSystem,
     private readonly inventory: InventorySystem,
@@ -120,7 +120,7 @@ export class MineflayerSurvivalSystem implements SurvivalSystem {
 
   private readonly onHealth = (): void => {
     const snapshot = this.snapshot();
-    this.memory.record({
+    this.telemetry.record({
       kind: "vitals",
       summary: `Health ${snapshot.health}, food ${snapshot.food}, oxygen ${snapshot.oxygen}`,
       payload: snapshot,
