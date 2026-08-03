@@ -11,6 +11,7 @@
     "seed:house": "tsx src/seed-house-project.ts",
     "seed:mining": "tsx src/seed-mining-project.ts",
     "operator": "tsx src/operator-cli.ts",
+    "world:snapshot": "tsx src/world-state-cli.ts",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

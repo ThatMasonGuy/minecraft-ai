@@ -107,6 +107,29 @@ The dashboard defaults to a three-chunk view, 30 FPS, and a 1.25 browser pixel-r
 
 The `./data` bind mount contains `memory.sqlite` and the Microsoft authentication cache. The separate `./local-server` bind mount contains the Paper world. Back up both if the agent's life history and world matter.
 
+## Reproducible test-world state
+
+Keep live history separate from destructive evaluation setup by using the test-state template:
+
+```powershell
+Copy-Item .env.test.example .env.test
+docker compose --env-file .env --env-file .env.test up -d --build
+# Run a bounded test, then stop every writer before maintenance.
+docker compose --env-file .env --env-file .env.test down
+npm run world:snapshot -- create clean-baseline --env-file .env.test
+```
+
+List or restore snapshots with:
+
+```powershell
+npm run world:snapshot -- list --env-file .env.test
+npm run world:snapshot -- restore clean-baseline --confirm --env-file .env.test
+```
+
+The workflow refuses maintenance while Compose services are running, checkpoints SQLite, restricts all state paths to specific directories inside the workspace, and records a SHA-256 manifest for every copied file. Authentication state is deliberately excluded from snapshots; restore preserves the current `data/auth` contents. A restore first moves the current world and agent directories into `.minecraft-ai-restore-backups/`, verifies the restored state, and reports that recovery path.
+
+API usage history is never rewound by a test restore. After restoring the snapshotted planner/executor state, the workflow merges any newer append-only usage and price records from the safety backup into the restored database. Stop any separately launched `npm run dev` process as well as Compose before using these commands.
+
 ## Memory model
 
 SQLite runs in WAL mode. Every record contains a timestamp, kind, human-readable summary, optional full JSON payload, coordinates, dimension, actor, and importance. The agent receives recent summaries by default and can explicitly search:

@@ -1,8 +1,12 @@
 .env
 .env.*
 !.env.example
+!.env.test.example
 data/
 local-server/
+test-state/
+.minecraft-ai-snapshots/
+.minecraft-ai-restore-backups/
 dist/
 node_modules/
 *.log

@@ -12,6 +12,8 @@ All notable changes to this project are recorded in this file.
 - Added an append-only API usage ledger with legacy backfill, immutable price-version estimates, raw usage retention, request idempotency, failed-attempt records, and lifetime/day/model/phase aggregation.
 - Added a loopback-only operator API and CLI for zero-cost deterministic gather/project submission, cancellation, status, and usage reporting, with a separate explicitly paid planner endpoint.
 - Added durable planner/operator provenance to work orders and projects so operator test inputs cannot be presented as autonomous choices.
+- Added checksummed stopped-stack test-world snapshots and recoverable restores that preserve authentication and merge newer permanent API usage history.
+- Added configurable Compose host paths and a separate test-state environment template so evaluations do not mutate the long-lived world by default.
 
 ### Changed
 
