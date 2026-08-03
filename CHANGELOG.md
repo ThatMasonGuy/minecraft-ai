@@ -6,6 +6,7 @@ All notable changes to this project are recorded in this file.
 
 ### Changed
 
+- Changed escape routing to retain a useful Pathfinder destination for the full route instead of replacing it every 500 milliseconds; evasion now replans only after reaching the route segment, losing its threat-separation advantage, or genuinely stalling.
 - Added escape-route stall detection to MovementSystem so combat blacklists a Pathfinder destination that produces no positional progress and immediately replans toward an alternate safe cell.
 - Hardened combat response so a healthy bot can fist-fight one ordinary zombie with a movement-aware kiting cadence, recently defeated entities cannot create phantom follow-up encounters, active encounters are visible in telemetry, ranged threats require either 24-block separation or sustained hard cover, safety must remain quiet before recovery begins, visible threats or fresh damage immediately resume evasion, and hostile classification no longer floods runtime traces through the deprecated `mobType` field.
 - Documented the canonical subsystem ownership map and strengthened repository rules against duplicate implementations, generic action/executor layers, runtime gameplay policy, concrete persistence access, and planner motor capabilities; refreshed capability status for the enclosed production, storage, and looting systems.

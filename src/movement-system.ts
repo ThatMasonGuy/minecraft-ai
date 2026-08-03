@@ -14,10 +14,11 @@ const { GoalBlock, GoalFollow, GoalLookAtBlock, GoalNear, GoalNearXZ, GoalXZ } =
 
 const ESCAPE_RADII = [4, 6, 8, 10, 12];
 const ESCAPE_DIRECTIONS = 16;
-const ESCAPE_REPLAN_MS = 500;
 const ESCAPE_STALL_MS = 1_500;
 const ESCAPE_PROGRESS_DISTANCE = 0.75;
 const ESCAPE_REJECT_MS = 5_000;
+const ESCAPE_GOAL_REACHED_DISTANCE = 1.5;
+const ESCAPE_GOAL_ADVANTAGE = 0.5;
 const HAZARDOUS_FEET_BLOCKS = new Set([
   "cactus",
   "campfire",
@@ -110,7 +111,6 @@ export type CombatMovementSystem = Pick<
 export class PathfinderMovementSystem implements MovementSystem {
   private mode: "idle" | "follow" | "approach" | "escape" = "idle";
   private targetKey?: string;
-  private lastEscapePlanAt = 0;
   private lastEscapeProgressAt = 0;
   private lastEscapePosition?: Position;
   private readonly rejectedEscapeTargets = new Map<string, number>();
@@ -396,13 +396,15 @@ export class PathfinderMovementSystem implements MovementSystem {
 
     const now = Date.now();
     this.updateEscapeProgress(current, now);
-    if (
-      this.mode === "escape" &&
-      this.targetKey &&
-      now - this.lastEscapePlanAt < ESCAPE_REPLAN_MS
-    ) {
+    if (this.mode === "escape" && this.targetKey) {
       const destination = parsePositionKey(this.targetKey);
-      if (destination) return { status: "moving", destination };
+      if (
+        destination &&
+        isUsefulEscapeDestination(current, destination, request.dangers)
+      ) {
+        return { status: "moving", destination };
+      }
+      this.targetKey = undefined;
     }
 
     const destination = selectEscapeDestination(
@@ -425,7 +427,6 @@ export class PathfinderMovementSystem implements MovementSystem {
     );
     this.mode = "escape";
     this.targetKey = positionKey(destination);
-    this.lastEscapePlanAt = now;
     return { status: "moving", destination };
   }
 
@@ -457,7 +458,6 @@ export class PathfinderMovementSystem implements MovementSystem {
       );
       this.bot.pathfinder.setGoal(null);
       this.targetKey = undefined;
-      this.lastEscapePlanAt = 0;
       this.lastEscapePosition = position;
       this.lastEscapeProgressAt = now;
     }
@@ -468,7 +468,6 @@ export class PathfinderMovementSystem implements MovementSystem {
   }
 
   private resetEscapeTracking(): void {
-    this.lastEscapePlanAt = 0;
     this.lastEscapeProgressAt = 0;
     this.lastEscapePosition = undefined;
     this.rejectedEscapeTargets.clear();
@@ -568,6 +567,20 @@ export class PathfinderMovementSystem implements MovementSystem {
         !HAZARDOUS_FLOOR_BLOCKS.has(floor.name)
     );
   }
+}
+
+function isUsefulEscapeDestination(
+  current: Pick<Position, "x" | "y" | "z">,
+  destination: Position,
+  dangers: MovementDanger[]
+): boolean {
+  if (distance(current, destination) <= ESCAPE_GOAL_REACHED_DISTANCE) {
+    return false;
+  }
+  return (
+    minimumDangerDistance(destination, dangers) >=
+    minimumDangerDistance(current, dangers) + ESCAPE_GOAL_ADVANTAGE
+  );
 }
 
 export function selectEscapeDestination(

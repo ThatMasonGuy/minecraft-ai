@@ -80,4 +80,47 @@ describe("movement escape routing", () => {
       vi.useRealTimers();
     }
   });
+
+  it("keeps one useful escape goal while movement is making progress", () => {
+    vi.useFakeTimers();
+    try {
+      const setGoal = vi.fn();
+      const position = new Vec3(0, 64, 0);
+      const bot = {
+        entity: { position },
+        pathfinder: { setGoal },
+        clearControlStates: vi.fn()
+      };
+      const sensing = {
+        blockAt: (block: { y: number }) => ({
+          name: block.y === 63 ? "stone" : "air",
+          boundingBox: block.y === 63 ? "block" : "empty"
+        })
+      };
+      const movement = new PathfinderMovementSystem(
+        bot as never,
+        {} as never,
+        sensing as never
+      );
+      const request = {
+        dangers: [{ position: { x: 2, y: 64, z: 0 } }],
+        safeDistance: 24
+      };
+
+      const first = movement.escape(request);
+      expect(first.status).toBe("moving");
+      position.x = -1;
+      vi.advanceTimersByTime(750);
+      const second = movement.escape(request);
+      position.x = -2;
+      vi.advanceTimersByTime(750);
+      const third = movement.escape(request);
+
+      expect(second).toEqual(first);
+      expect(third).toEqual(first);
+      expect(setGoal).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
