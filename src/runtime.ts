@@ -9,6 +9,7 @@ import { config } from "./config.js";
 import { DefenseExecutor } from "./defense-executor.js";
 import type { EpisodicMemory } from "./memory.js";
 import { Perception } from "./perception.js";
+import { parsePlanningCommand } from "./planner-mode.js";
 import { ProjectExecutor } from "./project-executor.js";
 import {
   RecoveryExecutor,
@@ -171,6 +172,7 @@ export class MinecraftRuntime {
         apiKey: config.openaiApiKey,
         model: config.openaiModel,
         reasoningEffort: config.reasoningEffort,
+        plannerMode: config.plannerMode,
         webSearchEnabled: config.webSearchEnabled,
         tickMs: config.tickMs,
         maxToolRounds: config.maxToolRounds,
@@ -185,7 +187,7 @@ export class MinecraftRuntime {
         perception,
         actions,
         config.workExecutorTickMs,
-        (reason) => this.agent?.wake(reason),
+        (reason) => this.agent?.wakeAutomatically(reason),
         (activity) => {
           if (
             !this.recoveryExecutor?.isActive() &&
@@ -230,6 +232,12 @@ export class MinecraftRuntime {
         importance: 8
       });
       console.log(`[runtime] Spawned as ${bot.username}`);
+      console.log(
+        `[planner] Mode ${config.plannerMode}` +
+          (config.plannerMode === "manual"
+            ? "; automatic model wakeups disabled; use !plan <task>"
+            : `; scheduled reflection every ${config.tickMs}ms`)
+      );
       this.agent.start();
       this.workExecutor.start();
       this.projectExecutor.start();
@@ -261,7 +269,18 @@ export class MinecraftRuntime {
         }
         return;
       }
-      this.agent?.wake(`${username} said in chat: ${message}`);
+      const planning = parsePlanningCommand(message);
+      if (planning.matched) {
+        if (!planning.task) {
+          bot.chat("Usage: !plan <task>");
+          return;
+        }
+        this.agent?.wake(
+          `${username} said in chat: ${planning.task} (explicit !plan request)`
+        );
+        return;
+      }
+      this.agent?.wakeAutomatically(`${username} said in chat: ${message}`);
     });
 
     bot.on("whisper", (username, message) => {
@@ -274,7 +293,18 @@ export class MinecraftRuntime {
         actor: username,
         importance: 8
       });
-      this.agent?.wake(`${username} whispered: ${message}`);
+      const planning = parsePlanningCommand(message);
+      if (planning.matched) {
+        if (!planning.task) {
+          bot.whisper(username, "Usage: !plan <task>");
+          return;
+        }
+        this.agent?.wake(
+          `${username} whispered: ${planning.task} (explicit !plan request)`
+        );
+        return;
+      }
+      this.agent?.wakeAutomatically(`${username} whispered: ${message}`);
     });
 
     bot.on("health", () => {
@@ -292,7 +322,7 @@ export class MinecraftRuntime {
       });
       const dangerous = bot.health <= 8 || bot.food <= 6;
       if (dangerous && !this.vitalsDangerous) {
-        this.agent?.wake("survival status became dangerous");
+        this.agent?.wakeAutomatically("survival status became dangerous");
       }
       this.vitalsDangerous = dangerous;
     });

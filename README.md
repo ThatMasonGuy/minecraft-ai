@@ -41,7 +41,7 @@ MC_PORT=25565
 MC_USERNAME=minecraft-ai
 MC_AUTH=microsoft
 MC_VERSION=1.21.4
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.6-luna
 VIEWER_ENABLED=true
 VIEWER_PORT=3007
 VIEWER_DISTANCE=3
@@ -95,9 +95,11 @@ Observation payloads retain the exact bounded snapshot supplied to the model. Th
 
 ## Autonomy and cost
 
-The model is pinned to `gpt-5.4-mini` to use the project's available token allowance while retaining Responses API function calling and web search. Scheduled reflection defaults to once every 90 minutes with up to two tool continuations, while chat and dangerous vitals wake the agent immediately.
+The planner uses `gpt-5.6-luna`, the cost-sensitive GPT-5.6 tier for high-volume workloads, while retaining Responses API function calling and web search. The existing `low` reasoning effort is preserved as the migration baseline. `PLANNER_MODE=manual` is the default for development: startup, scheduled reflection, ordinary chat, dangerous vitals, and executor events do not wake the model. Send `!plan <task>` in chat or a whisper to request one deliberate planning turn. Deterministic projects, work orders, recovery, storage, and safety behavior continue without scheduled model calls.
 
-The agent records exact API usage and checks a rolling 24-hour budget before every model call. By default, it stops spending at 850,000 processed tokens, reserving 150,000 tokens beneath the 1,000,000-token daily target for request-size variance. Configure this with `DAILY_TOKEN_BUDGET`, `DAILY_TOKEN_RESERVE`, `MAX_OUTPUT_TOKENS`, `AGENT_TICK_MS`, and `MAX_TOOL_ROUNDS`. Web search is available only when `WEB_SEARCH_ENABLED=true` and is billed when used.
+Set `PLANNER_MODE=automatic` only for an intentional autonomous run. Automatic mode preserves the existing startup, chat, vitals, executor, and scheduled wakeups; scheduled reflection defaults to once every 90 minutes through `AGENT_TICK_MS=5400000`, with up to two tool continuations.
+
+The agent records exact API usage and checks a rolling 24-hour budget before every model call. By default, it stops spending at 850,000 processed tokens, reserving 150,000 tokens beneath the 1,000,000-token daily target for request-size variance. Configure this with `PLANNER_MODE`, `DAILY_TOKEN_BUDGET`, `DAILY_TOKEN_RESERVE`, `MAX_OUTPUT_TOKENS`, `AGENT_TICK_MS`, and `MAX_TOOL_ROUNDS`. Web search is available only when `WEB_SEARCH_ENABLED=true` and is billed when used.
 
 Model pauses do not stop ordinary work. The planner can persist a gathering work order with a minimum success count and either stop at that milestone or continue until replaced. The deterministic executor finishes connected trunks, searches nearby through physical movement, tracks cumulative yield across inventory deposits, and runs without API calls. Long-running orders can return to a known chest, trapped chest, or barrel when inventory space runs low, deposit the gathered item, and resume. It still pauses for unsafe survival conditions and stops when movement, storage, or the requested resource becomes genuinely unavailable.
 

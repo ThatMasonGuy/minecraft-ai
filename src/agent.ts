@@ -4,6 +4,10 @@ import type { Response } from "openai/resources/responses/responses";
 import type { MinecraftActions } from "./actions.js";
 import type { EpisodicMemory } from "./memory.js";
 import type { Perception } from "./perception.js";
+import {
+  allowsAutomaticPlanning,
+  type PlannerMode
+} from "./planner-mode.js";
 import type { ActivityUpdate } from "./types.js";
 import type { Goal, PerceptionSnapshot } from "./types.js";
 
@@ -11,6 +15,7 @@ interface AgentOptions {
   apiKey: string;
   model: string;
   reasoningEffort: "none" | "low" | "medium" | "high" | "xhigh";
+  plannerMode: PlannerMode;
   webSearchEnabled: boolean;
   tickMs: number;
   maxToolRounds: number;
@@ -55,9 +60,21 @@ export class AutonomousAgent {
 
   start(): void {
     this.stopped = false;
+    if (!allowsAutomaticPlanning(this.options.plannerMode)) {
+      this.reportActivity(
+        "idle",
+        "Manual planning mode",
+        "Automatic model wakeups are disabled; use !plan <task>"
+      );
+      return;
+    }
+
     this.reportActivity("idle", "Agent ready");
-    this.timer = setInterval(() => this.wake("scheduled reflection"), this.options.tickMs);
-    this.wake("entered the world");
+    this.timer = setInterval(
+      () => this.wakeAutomatically("scheduled reflection"),
+      this.options.tickMs
+    );
+    this.wakeAutomatically("entered the world");
   }
 
   stop(): void {
@@ -85,6 +102,12 @@ export class AutonomousAgent {
       ? `${this.pendingReason}; ${reason}`
       : reason;
     if (!this.running) void this.runPendingTurns();
+  }
+
+  wakeAutomatically(reason: string): boolean {
+    if (!allowsAutomaticPlanning(this.options.plannerMode)) return false;
+    this.wake(reason);
+    return true;
   }
 
   private async runPendingTurns(): Promise<void> {
@@ -251,7 +274,7 @@ export class AutonomousAgent {
   }
 
   private recordUsage(
-    response: Pick<Response, "id" | "usage">,
+    response: Pick<Response, "id" | "model" | "usage">,
     phase: string
   ): void {
     const usage = response.usage;
@@ -260,7 +283,7 @@ export class AutonomousAgent {
     const cachedTokens = usage.input_tokens_details.cached_tokens;
     const reasoningTokens = usage.output_tokens_details.reasoning_tokens;
     const summary =
-      `OpenAI ${phase}: ${usage.input_tokens} input ` +
+      `OpenAI ${phase} [${response.model}]: ${usage.input_tokens} input ` +
       `(${cachedTokens} cached), ${usage.output_tokens} output ` +
       `(${reasoningTokens} reasoning), ${usage.total_tokens} total`;
 
@@ -269,7 +292,9 @@ export class AutonomousAgent {
       summary,
       payload: {
         responseId: response.id,
-        model: this.options.model,
+        model: response.model,
+        requestedModel: this.options.model,
+        reasoningEffort: this.options.reasoningEffort,
         phase,
         usage
       },
@@ -316,7 +341,9 @@ export class AutonomousAgent {
     });
     console.warn(`[budget] ${summary}`);
     this.ensureDeterministicContinuity();
-    this.scheduleBudgetResume(resumeAt);
+    if (allowsAutomaticPlanning(this.options.plannerMode)) {
+      this.scheduleBudgetResume(resumeAt);
+    }
     this.budgetPaused = true;
     this.reportActivity("paused", "Paused by token budget", detail);
     return false;
@@ -365,7 +392,7 @@ export class AutonomousAgent {
     this.budgetResumeTimer = setTimeout(() => {
       this.budgetResumeTimer = undefined;
       this.budgetResumeAt = 0;
-      this.wake("token budget became available");
+      this.wakeAutomatically("token budget became available");
     }, Math.max(1_000, timestamp - Date.now()));
   }
 

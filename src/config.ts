@@ -1,6 +1,7 @@
 import "dotenv/config";
 import path from "node:path";
 import { z } from "zod";
+import { PLANNER_MODES } from "./planner-mode.js";
 
 const booleanFromString = (defaultValue: boolean) =>
   z
@@ -12,10 +13,11 @@ const booleanFromString = (defaultValue: boolean) =>
 
 const schema = z.object({
   OPENAI_API_KEY: z.string().min(20),
-  OPENAI_MODEL: z.string().default("gpt-5.4-mini"),
+  OPENAI_MODEL: z.string().default("gpt-5.6-luna"),
   OPENAI_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh"])
     .default("low"),
+  PLANNER_MODE: z.enum(PLANNER_MODES).default("manual"),
   WEB_SEARCH_ENABLED: booleanFromString(true),
   MC_HOST: z.string().default("localhost"),
   MC_PORT: z.coerce.number().int().min(1).max(65535).default(25565),
@@ -46,6 +48,7 @@ export const config = {
   openaiApiKey: parsed.OPENAI_API_KEY,
   openaiModel: parsed.OPENAI_MODEL,
   reasoningEffort: parsed.OPENAI_REASONING_EFFORT,
+  plannerMode: parsed.PLANNER_MODE,
   webSearchEnabled: parsed.WEB_SEARCH_ENABLED,
   minecraft: {
     host: parsed.MC_HOST,
