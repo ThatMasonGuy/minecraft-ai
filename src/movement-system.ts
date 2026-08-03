@@ -4,6 +4,7 @@ import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type { Position } from "./types.js";
 import type { InventorySystem } from "./inventory-system.js";
+import type { SensingSystem } from "./perception.js";
 
 const require = createRequire(import.meta.url);
 const { goals, Movements } = require(
@@ -111,7 +112,8 @@ export class PathfinderMovementSystem implements MovementSystem {
 
   constructor(
     private readonly bot: Bot,
-    private readonly inventory: InventorySystem
+    private readonly inventory: InventorySystem,
+    private readonly sensing: SensingSystem
   ) {}
 
   configureBase(): void {
@@ -439,9 +441,9 @@ export class PathfinderMovementSystem implements MovementSystem {
     target: Position
   ): Promise<boolean> {
     const currentVector = new Vec3(current.x, current.y, current.z);
-    const support = this.bot.blockAt(currentVector.offset(0, -1, 0));
-    const targetBlock = this.bot.blockAt(new Vec3(target.x, target.y, target.z));
-    const headBlock = this.bot.blockAt(new Vec3(target.x, target.y + 1, target.z));
+    const support = this.sensing.blockAt(currentVector.offset(0, -1, 0));
+    const targetBlock = this.sensing.blockAt(new Vec3(target.x, target.y, target.z));
+    const headBlock = this.sensing.blockAt(new Vec3(target.x, target.y + 1, target.z));
     const scaffold = this.inventory.findFirst(
       (item) => item.name === "dirt" || item.name === "cobblestone"
     );
@@ -496,9 +498,9 @@ export class PathfinderMovementSystem implements MovementSystem {
 
   private isSafeDestination(position: Position): boolean {
     const feetPosition = new Vec3(position.x, position.y, position.z);
-    const feet = this.bot.blockAt(feetPosition);
-    const head = this.bot.blockAt(feetPosition.offset(0, 1, 0));
-    const floor = this.bot.blockAt(feetPosition.offset(0, -1, 0));
+    const feet = this.sensing.blockAt(feetPosition);
+    const head = this.sensing.blockAt(feetPosition.offset(0, 1, 0));
+    const floor = this.sensing.blockAt(feetPosition.offset(0, -1, 0));
     return Boolean(
       feet &&
         head &&

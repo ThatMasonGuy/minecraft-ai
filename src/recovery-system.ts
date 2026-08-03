@@ -518,10 +518,7 @@ export class RecoverySystem {
     const inDeathDimension =
       String(this.bot.game?.dimension) === job.dimension;
     const deathChunkLoaded =
-      inDeathDimension &&
-      this.bot.world.getColumnAt(
-        new Vec3(job.position.x, job.position.y, job.position.z)
-      ) !== null;
+      inDeathDimension && this.sensing.isLoaded(job.position);
     if (!deathChunkLoaded || elapsedMs === 0) {
       return false;
     }

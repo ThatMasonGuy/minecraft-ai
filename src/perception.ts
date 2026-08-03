@@ -25,6 +25,7 @@ export interface SensingSystem {
   visibleEntitiesRaw(maxDistance?: number): Entity[];
   entityById(id: number): Entity | undefined;
   hasLineOfSight(entity: Entity): boolean;
+  isLoaded(position: Pick<Position, "x" | "y" | "z">): boolean;
 }
 
 export class MineflayerSensingSystem implements SensingSystem {
@@ -135,6 +136,14 @@ export class MineflayerSensingSystem implements SensingSystem {
 
   canSeeBlock(block: SensedBlock): boolean {
     return this.bot.canSeeBlock(block);
+  }
+
+  isLoaded(position: Pick<Position, "x" | "y" | "z">): boolean {
+    return (
+      this.bot.world.getColumnAt(
+        new Vec3(position.x, position.y, position.z)
+      ) !== null
+    );
   }
 
   private sampleVisibleBlocks(): VisibleBlock[] {

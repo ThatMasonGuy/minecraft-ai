@@ -121,13 +121,17 @@ export class MinecraftRuntime {
     bot.once("spawn", async () => {
       const inventorySystem = new MineflayerInventorySystem(bot);
       this.inventorySystem = inventorySystem;
-      const movementSystem = new PathfinderMovementSystem(bot, inventorySystem);
-      movementSystem.configureBase();
       const perception = new Perception(
         bot,
         config.perceptionDistance,
         inventorySystem
       );
+      const movementSystem = new PathfinderMovementSystem(
+        bot,
+        inventorySystem,
+        perception
+      );
+      movementSystem.configureBase();
       const miningSystem = new MineflayerMiningSystem(
         bot,
         perception,

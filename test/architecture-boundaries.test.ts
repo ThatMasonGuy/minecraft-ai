@@ -110,6 +110,32 @@ describe("enclosed subsystem boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps loaded-world block and chunk reads in sensing adapters", () => {
+    const allowed = new Set([
+      path.join(SOURCE_ROOT, "perception.ts"),
+      path.join(SOURCE_ROOT, "viewer-status.ts")
+    ]);
+    const forbidden = [
+      /(?:this\.)?bot\.blockAt\s*\(/,
+      /(?:this\.)?bot\.world\.getColumnAt\s*\(/
+    ];
+    const violations = sourceFiles()
+      .filter((file) => !allowed.has(file))
+      .flatMap((file) => {
+        const relative = path.relative(SOURCE_ROOT, file);
+        return fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .flatMap((line, index) =>
+            forbidden.some((pattern) => pattern.test(line))
+              ? [`${relative}:${index + 1}: ${line.trim()}`]
+              : []
+          );
+      });
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps carried inventory reads and mutations in inventory", () => {
     const allowed = new Set([path.join(SOURCE_ROOT, "inventory-system.ts")]);
     const forbidden = [
