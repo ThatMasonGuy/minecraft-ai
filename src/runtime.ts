@@ -39,6 +39,7 @@ import { AcquisitionSystem } from "./acquisition-system.js";
 import { TaskSystem } from "./task-system.js";
 import { PersistentTelemetrySystem } from "./telemetry-system.js";
 import { MineflayerCommunicationSystem } from "./communication-system.js";
+import { FoodProvisioningSystem } from "./food-provisioning-system.js";
 
 const require = createRequire(import.meta.url);
 const { pathfinder } = require(
@@ -51,6 +52,7 @@ export class MinecraftRuntime {
   private bot?: Bot;
   private agent?: AutonomousAgent;
   private combatSystem?: CombatSystem;
+  private foodProvisioningSystem?: FoodProvisioningSystem;
   private lootingSystem?: LootingSystem;
   private acquisitionSystem?: AcquisitionSystem;
   private projectSystem?: ProjectSystem;
@@ -78,6 +80,7 @@ export class MinecraftRuntime {
     this.stopping = true;
     this.agent?.stop();
     this.combatSystem?.stop();
+    this.foodProvisioningSystem?.stop();
     this.lootingSystem?.stop();
     this.taskSystem?.stop();
     this.storageSystem?.stop();
@@ -227,6 +230,22 @@ export class MinecraftRuntime {
       );
       this.combatSystem = combatSystem;
       combatSystem.start();
+      const foodProvisioningSystem = new FoodProvisioningSystem(
+        telemetry,
+        perception,
+        movementSystem,
+        inventorySystem,
+        survivalSystem,
+        combatSystem,
+        lootingSystem,
+        config.workExecutorTickMs,
+        executionCoordinator.scope(
+          "food",
+          () => this.foodProvisioningSystem?.isActive() ?? false
+        )
+      );
+      this.foodProvisioningSystem = foodProvisioningSystem;
+      foodProvisioningSystem.start();
       if (config.viewerEnabled) {
         this.viewer = startViewerServer(bot, {
           host: config.viewerHost,
@@ -254,6 +273,7 @@ export class MinecraftRuntime {
         inventorySystem,
         () =>
           (this.combatSystem?.isActive() ?? false) ||
+          (this.foodProvisioningSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false),
         executionCoordinator.scope(
           "storage",
@@ -295,6 +315,7 @@ export class MinecraftRuntime {
           }),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
+          (this.foodProvisioningSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false) ||
           (this.storageSystem?.isActive() ?? false),
         executionCoordinator.scope(
@@ -315,7 +336,6 @@ export class MinecraftRuntime {
         productionSystem,
         storageSystem,
         survivalSystem,
-        combatSystem,
         lootingSystem,
         config.workExecutorTickMs,
         (status, project) =>
@@ -333,6 +353,7 @@ export class MinecraftRuntime {
           ),
         () =>
           (this.combatSystem?.isActive() ?? false) ||
+          (this.foodProvisioningSystem?.isActive() ?? false) ||
           (this.recoverySystem?.isActive() ?? false) ||
           (this.storageSystem?.isActive() ?? false),
         executionCoordinator.scope(
@@ -594,12 +615,14 @@ export class MinecraftRuntime {
     bot.once("end", (reason) => {
       this.agent?.stop();
       this.combatSystem?.stop();
+      this.foodProvisioningSystem?.stop();
       this.taskSystem?.stop();
       this.storageSystem?.stop();
       this.survivalSystem?.stop();
       this.executionCoordinator?.dispose();
       this.agent = undefined;
       this.combatSystem = undefined;
+      this.foodProvisioningSystem = undefined;
       this.acquisitionSystem = undefined;
       this.projectSystem = undefined;
       this.recoverySystem = undefined;

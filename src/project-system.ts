@@ -1,5 +1,4 @@
 import type { Bot } from "mineflayer";
-import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
 import type { ProjectPersistence } from "./persistence-ports.js";
 import type { ExecutionScope } from "./execution-coordinator.js";
@@ -22,7 +21,6 @@ import type { BuildingSystem } from "./building-system.js";
 import type { ProductionSystem } from "./production-system.js";
 import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
-import type { CombatSystem } from "./combat-system.js";
 import type { LootingSystem } from "./looting-system.js";
 import type { TaskLifecycle } from "./task-lifecycle.js";
 import {
@@ -40,7 +38,6 @@ import type {
   RelativePosition,
   StructureCheck
 } from "./types.js";
-import { spiralOffset } from "./acquisition-system.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
 
 interface SurveyState {
@@ -79,11 +76,6 @@ interface ProspectState {
   returnCursor?: number;
   returnFailures?: number;
   returnStride?: number;
-  forageOrigin?: Position;
-  forageWaypoint?: number;
-  forageTargetId?: number;
-  forageTargetPosition?: Position;
-  lastForageAttackAt?: number;
 }
 
 type EmergencyToolResult = "crafted" | "working" | "impossible";
@@ -107,7 +99,6 @@ export class ProjectSystem {
     private readonly production: ProductionSystem,
     private readonly storage: StorageSystem,
     private readonly survival: SurvivalSystem,
-    private readonly combat: CombatSystem,
     private readonly looting: LootingSystem,
     private readonly tickMs: number,
     private readonly onTerminal?: (
@@ -894,8 +885,6 @@ export class ProjectSystem {
     state.descentFailures ??= 0;
     const descentHeading = state.descentHeading;
 
-    if (await this.ensureMiningFood(project, state)) return;
-
     if (!this.hasPickaxe()) {
       const upgrade = await this.craftEmergencyStonePickaxe(
         project,
@@ -1383,131 +1372,6 @@ export class ProjectSystem {
       new Vec3(nearest.x, nearest.y, nearest.z)
     );
     return block && this.mining.canMine(nearest) ? nearest : undefined;
-  }
-
-  private async ensureMiningFood(
-    project: ProjectPlan,
-    state: ProspectState
-  ): Promise<boolean> {
-    if (
-      this.survival.snapshot().food >= 18 &&
-      safeFoodCount(this.inventory) >= 3
-    ) {
-      state.forageOrigin = undefined;
-      state.forageWaypoint = undefined;
-      state.forageTargetId = undefined;
-      state.forageTargetPosition = undefined;
-      return false;
-    }
-
-    if (
-      state.surfaceOrigin &&
-      distanceBetween(this.bot.entity.position, state.surfaceOrigin) > 4
-    ) {
-      const traversal = await this.followRecordedTraversal(project);
-      if (traversal === "progress") return true;
-      if (traversal === "blocked") {
-        this.blockProject(
-          project,
-          "Food reserves are low and the recorded surface route is blocked"
-        );
-        return true;
-      }
-    }
-
-    const snapshot = this.perception.observe();
-    const visibleFoodTarget = snapshot.visibleEntities
-      .filter((entity) => foodAnimalPriority(entity.name) > 0)
-      .map((visible) => this.perception.entityById(visible.id))
-      .filter(
-        (entity): entity is Entity =>
-          entity !== undefined &&
-          entity.isValid &&
-          entity.height >= 0.8
-      )
-      .sort(
-        (a, b) =>
-          foodAnimalPriority(b.name ?? "") -
-            foodAnimalPriority(a.name ?? "") ||
-          this.bot.entity.position.distanceTo(a.position) -
-            this.bot.entity.position.distanceTo(b.position)
-      )[0];
-    const rememberedTarget = state.forageTargetId
-      ? this.perception.entityById(state.forageTargetId)
-      : undefined;
-    const target =
-      rememberedTarget?.isValid
-        ? rememberedTarget
-        : visibleFoodTarget;
-
-    if (!target && state.forageTargetPosition) {
-      if (
-        distanceBetween(
-          this.bot.entity.position,
-          state.forageTargetPosition
-        ) > 2
-      ) {
-        this.report(
-          "working",
-          "Collecting food drops",
-          "Returning to the last visible animal"
-        );
-        await this.movement.goNear(state.forageTargetPosition, 1, 15_000);
-        return true;
-      }
-      state.forageTargetId = undefined;
-      state.forageTargetPosition = undefined;
-      this.memory.saveProject(project);
-      await delay(750);
-      return true;
-    }
-
-    if (target) {
-      state.forageTargetId = target.id;
-      state.forageTargetPosition = floorPosition(target.position);
-      this.memory.saveProject(project);
-      this.report(
-        "working",
-        `Hunting visible ${target.name ?? "animal"} for food`,
-        `${safeFoodCount(this.inventory)}/3 reserve items`
-      );
-      const engagement = this.combat.engageVisibleMob(
-        target.id,
-        "A project requested visible food acquisition"
-      );
-      if (engagement === "unavailable" || engagement === "rejected") {
-        state.forageTargetId = undefined;
-        state.forageTargetPosition = undefined;
-        this.memory.saveProject(project);
-      }
-      return true;
-    }
-
-    state.forageOrigin ??=
-      project.anchor ??
-      state.surfaceOrigin ??
-      floorPosition(this.bot.entity.position);
-    state.forageWaypoint ??= 0;
-    const offset = spiralOffset(state.forageWaypoint);
-    state.forageWaypoint += 1;
-    this.memory.saveProject(project);
-    const waypoint = {
-      x: state.forageOrigin.x + offset.x * 12,
-      y: Math.floor(this.bot.entity.position.y),
-      z: state.forageOrigin.z + offset.z * 12
-    };
-    this.report(
-      "working",
-      "Searching visibly for food animals",
-      `Waypoint ${state.forageWaypoint}`
-    );
-    const movement = await this.movement.reachSurfaceArea(waypoint, 4);
-    if (movement.status === "blocked") {
-      console.warn(
-        `[project] Food search movement failed: ${movement.detail}`
-      );
-    }
-    return true;
   }
 
   private calibrateStaircaseHeight(
@@ -2055,24 +1919,6 @@ export class ProjectSystem {
   }
 }
 
-export function foodAnimalPriority(name: string): number {
-  switch (name.toLowerCase()) {
-    case "cow":
-    case "mooshroom":
-      return 5;
-    case "pig":
-      return 4;
-    case "sheep":
-      return 3;
-    case "chicken":
-      return 2;
-    case "rabbit":
-      return 1;
-    default:
-      return 0;
-  }
-}
-
 export interface BuildSiteCandidate {
   anchor: Position;
   obstructions: number;
@@ -2157,17 +2003,6 @@ export function selectBuildSiteCandidate(options: {
 
 function positionKey(position: Position): string {
   return `${position.x},${position.y},${position.z}`;
-}
-
-function safeFoodCount(inventory: InventorySystem): number {
-  const banned = new Set([
-    "chorus_fruit",
-    "poisonous_potato",
-    "pufferfish",
-    "rotten_flesh",
-    "spider_eye"
-  ]);
-  return inventory.foodCount(banned);
 }
 
 function isSolid(

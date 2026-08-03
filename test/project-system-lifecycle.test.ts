@@ -34,7 +34,6 @@ function systemWith(
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
     3_000,
     onTerminal
   );

@@ -5,6 +5,7 @@ import { createActor, createMachine } from "xstate";
 export type ExecutionOwner =
   | "combat"
   | "recovery"
+  | "food"
   | "storage"
   | "work"
   | "project";
@@ -15,6 +16,7 @@ type CoordinatorEvent =
   | { type: "IDLE" }
   | { type: "COMBAT" }
   | { type: "RECOVERY" }
+  | { type: "FOOD" }
   | { type: "STORAGE" }
   | { type: "WORK" }
   | { type: "PROJECT" };
@@ -24,8 +26,9 @@ const OWNER_PRIORITY: Record<ExecutionState, number> = {
   project: 1,
   work: 2,
   storage: 3,
-  recovery: 4,
-  combat: 5
+  food: 4,
+  recovery: 5,
+  combat: 6
 };
 
 const MUTATING_PATHFINDER_METHODS = new Set([
@@ -43,6 +46,7 @@ const executionMachine = createMachine({
     idle: { on: transitions() },
     combat: { on: transitions() },
     recovery: { on: transitions() },
+    food: { on: transitions() },
     storage: { on: transitions() },
     work: { on: transitions() },
     project: { on: transitions() }
@@ -163,6 +167,7 @@ function transitions() {
     IDLE: "idle",
     COMBAT: "combat",
     RECOVERY: "recovery",
+    FOOD: "food",
     STORAGE: "storage",
     WORK: "work",
     PROJECT: "project"

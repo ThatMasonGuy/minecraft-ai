@@ -365,7 +365,7 @@ describe("combat API ownership", () => {
         visibleEntitiesRaw: () => []
       } as never,
       {
-        items: () => [{ name: "wooden_sword" }],
+        items: () => [],
         equipment: () => undefined,
         find: () => undefined,
         heldItem: () => undefined
@@ -373,8 +373,8 @@ describe("combat API ownership", () => {
       { collectStep: vi.fn(), endSession: vi.fn() } as never,
       {
         snapshot: () => ({
-          health: 20,
-          food: 20,
+          health: 2,
+          food: 17,
           oxygen: 20,
           dangerous: false,
           combatReady: true
@@ -383,8 +383,17 @@ describe("combat API ownership", () => {
     );
 
     expect(combat.engageVisibleMob(player.id, "test request")).toBe("rejected");
-    expect(combat.engageVisibleMob(cow.id, "food acquisition")).toBe("engaged");
+    expect(combat.engageVisiblePassiveMob(cow.id, "food acquisition")).toBe(
+      "engaged"
+    );
     expect(combat.currentMode()).toBe("pursuing");
+    expect(
+      (
+        combat as unknown as {
+          assess(target: typeof cow, threats: []): { action: string };
+        }
+      ).assess(cow, [])
+    ).toEqual({ action: "fight" });
   });
 });
 

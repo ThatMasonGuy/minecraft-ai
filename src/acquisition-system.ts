@@ -7,6 +7,8 @@ import type { MiningSystem } from "./mining-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
 import type { TaskLifecycle } from "./task-lifecycle.js";
 import type { TelemetrySystem } from "./telemetry-system.js";
+import { spiralOffset } from "./navigation.js";
+export { spiralOffset } from "./navigation.js";
 import type {
   ActivityUpdate,
   PerceptionSnapshot,
@@ -431,21 +433,4 @@ export function matchesGatherSource(
 
 function blockKey(block: Pick<VisibleBlock, "x" | "y" | "z">): string {
   return `${block.x},${block.y},${block.z}`;
-}
-
-export function spiralOffset(index: number): { x: number; z: number } {
-  const n = Math.max(1, Math.floor(index) + 2);
-  const ring = Math.ceil((Math.sqrt(n) - 1) / 2);
-  const sideLength = ring * 2;
-  const maximum = (ring * 2 + 1) ** 2;
-  const offset = maximum - n;
-
-  if (offset < sideLength) return { x: ring - offset, z: -ring };
-  if (offset < sideLength * 2) {
-    return { x: -ring, z: -ring + (offset - sideLength) };
-  }
-  if (offset < sideLength * 3) {
-    return { x: -ring + (offset - sideLength * 2), z: ring };
-  }
-  return { x: ring, z: ring - (offset - sideLength * 3) };
 }

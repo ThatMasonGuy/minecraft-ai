@@ -16,6 +16,7 @@ This file is the ownership map for deterministic behavior. A raw Minecraft opera
 | ProductionSystem | `src/production-system.ts` | Recipe resolution, crafting, furnaces, fuel, output collection, and production outcomes |
 | StorageSystem | `src/storage-system.ts` | Owned containers, deposits, withdrawals, capacity pressure, transfer verification, and container accounting |
 | SurvivalSystem | `src/survival-system.ts` | Vitals policy, automatic eating, armour upkeep, consumption, sleep, wake, danger edges, and combat readiness |
+| FoodProvisioningSystem | `src/food-provisioning-system.ts` | Food reserves, emergency consumption, food-drop collection, passive-animal selection, hunting requests, and bounded visible search |
 | CommunicationSystem | `src/communication-system.ts` | Outbound chat and whispers |
 | AcquisitionSystem | `src/acquisition-system.ts` | Persistent gather execution, source search, survival pauses, storage cycles, progress, and bounded escalation |
 | ProjectSystem | `src/project-system.ts`, `src/project-compiler.ts`, `src/generated-projects.ts`, `src/house-design.ts` | Bounded planner-authored design geometry, deterministic project compilation, and durable multi-stage execution and verification through lower-level system APIs |
@@ -28,13 +29,13 @@ This file is the ownership map for deterministic behavior. A raw Minecraft opera
 
 ## Dependency direction
 
-PlannerTools and operator control submit broad outcomes to TaskSystem. TaskSystem owns AcquisitionSystem, ProjectSystem, and RecoverySystem lifecycles. Those workflows compose Survival, Combat, Looting, Storage, Production, Building, Mining, Inventory, Sensing, and Movement APIs. Telemetry and narrow persistence ports are infrastructure dependencies; they do not issue gameplay operations.
+PlannerTools and operator control submit broad outcomes to TaskSystem. FoodProvisioningSystem independently preempts ordinary work when reserves or regeneration are unsafe, composing Survival, Combat, Looting, Inventory, Sensing, and Movement APIs. TaskSystem owns AcquisitionSystem, ProjectSystem, and RecoverySystem lifecycles. Those workflows compose the remaining enclosed APIs. Telemetry and narrow persistence ports are infrastructure dependencies; they do not issue gameplay operations.
 
 Combat requests movement outcomes such as follow, hold, and escape. It never creates a path. ProjectSystem may request CombatSystem to engage a visible non-player mob, but it never attacks. Building may satisfy MovementSystem's traversal-placement callback, but movement never places a block directly. These are intentional API dependencies, not shared ownership.
 
 ## Enforcement
 
-`test/architecture-boundaries.test.ts` rejects raw pathfinding outside MovementSystem, world reads outside SensingSystem, inventory access outside InventorySystem, digging outside MiningSystem, placement outside BuildingSystem, production outside ProductionSystem, container transfer outside StorageSystem, survival mutations outside SurvivalSystem, attacks outside CombatSystem, outbound chat outside CommunicationSystem, task lifecycle writes outside TaskSystem, subsystem-local telemetry, concrete persistence imports, and planner motor capabilities.
+`test/architecture-boundaries.test.ts` rejects raw pathfinding outside MovementSystem, world reads outside SensingSystem, inventory access outside InventorySystem, digging outside MiningSystem, placement outside BuildingSystem, production outside ProductionSystem, container transfer outside StorageSystem, survival mutations outside SurvivalSystem, attacks outside CombatSystem, outbound chat outside CommunicationSystem, task lifecycle writes outside TaskSystem, subsystem-local telemetry, concrete persistence imports, and planner motor capabilities. Food acquisition policy belongs only to FoodProvisioningSystem; it requests combat, looting, and movement outcomes through their APIs.
 
 When adding behavior:
 

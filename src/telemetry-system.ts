@@ -7,6 +7,7 @@ export type TelemetryChannel =
   | "acquisition"
   | "project"
   | "recovery"
+  | "survival"
   | "storage";
 
 export interface TelemetrySystem {

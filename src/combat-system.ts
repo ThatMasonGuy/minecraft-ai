@@ -127,6 +127,7 @@ interface CombatItem {
 export class CombatSystem {
   private mode: CombatMode = "idle";
   private target?: Entity;
+  private passiveTargetId?: number;
   private playerAggressor?: Entity;
   private encounter?: EncounterTelemetry;
   private ticking = false;
@@ -193,6 +194,27 @@ export class CombatSystem {
     if (decision.action === "escape") {
       this.startEscape(target, decision.reason);
     }
+    return "engaged";
+  }
+
+  engageVisiblePassiveMob(
+    entityId: number,
+    reason: string
+  ): CombatEngagementResult {
+    if (this.isActive()) return "busy";
+    const target = this.sensing.entityById(entityId);
+    if (
+      !target ||
+      !target.isValid ||
+      !this.sensing.hasLineOfSight(target) ||
+      isPlayerEntity(target) ||
+      isRecognizedHostile(target)
+    ) {
+      return "rejected";
+    }
+    this.passiveTargetId = target.id;
+    this.beginMobEncounter(target, reason);
+    this.mode = "pursuing";
     return "engaged";
   }
 
@@ -649,6 +671,17 @@ export class CombatSystem {
   }
 
   private assess(target: Entity, threats: Entity[]): CombatDecision {
+    if (this.passiveTargetId === target.id) {
+      const nearbyHostiles = threats.filter(
+        (entity) => this.bot.entity.position.distanceTo(entity.position) <= 8
+      ).length;
+      return nearbyHostiles > 0
+        ? {
+            action: "escape",
+            reason: `${nearbyHostiles} hostile threat(s) interrupted passive hunting`
+          }
+        : { action: "fight" };
+    }
     const weapon = selectBestWeapon(this.inventory.items());
     return decideCombat({
       targetName: normalizedEntityName(target),
@@ -819,6 +852,7 @@ export class CombatSystem {
     this.survival.resumeAutoCare();
     this.mode = "idle";
     this.target = undefined;
+    this.passiveTargetId = undefined;
     this.playerAggressor = undefined;
     this.escapeStartedAt = 0;
     this.recoveryStartedAt = 0;

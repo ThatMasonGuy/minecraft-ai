@@ -47,6 +47,7 @@ All notable changes to this project are recorded in this file.
 
 ### Added
 
+- Added an enclosed deterministic FoodProvisioningSystem that preempts ordinary projects and gathering, consumes held food including emergency rotten flesh when critical, recovers before risky foraging when hunger permits regeneration, collects food drops, requests passive-animal combat, and searches visible terrain without model calls.
 - Added a bounded planner-authored house design language for arbitrary connected footprints, entrance placement, names, and wall heights; deterministic compilation now derives site preparation, materials, workbench location, shell placements, and verification from the authored geometry instead of selecting a coded layout.
 - Added a coordinate-free high-level project compiler and `delegate_project` planner tool for verified starter shelters and full diamond progressions; deterministic code now owns material/site selection, complete plan generation, goal linking, and validation.
 - Added architecture enforcement against importing the concrete persistence implementation into enclosed subsystems.

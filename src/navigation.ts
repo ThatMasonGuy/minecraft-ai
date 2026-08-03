@@ -107,6 +107,23 @@ export function isCurrentSupportBlock(
   );
 }
 
+export function spiralOffset(index: number): { x: number; z: number } {
+  const n = Math.max(1, Math.floor(index) + 2);
+  const ring = Math.ceil((Math.sqrt(n) - 1) / 2);
+  const sideLength = ring * 2;
+  const maximum = (ring * 2 + 1) ** 2;
+  const offset = maximum - n;
+
+  if (offset < sideLength) return { x: ring - offset, z: -ring };
+  if (offset < sideLength * 2) {
+    return { x: -ring, z: -ring + (offset - sideLength) };
+  }
+  if (offset < sideLength * 3) {
+    return { x: -ring + (offset - sideLength * 2), z: ring };
+  }
+  return { x: ring, z: ring - (offset - sideLength * 3) };
+}
+
 function floorPosition(position: {
   x: number;
   y: number;
