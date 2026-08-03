@@ -24,7 +24,10 @@ import type { StorageSystem } from "./storage-system.js";
 import type { SurvivalSystem } from "./survival-system.js";
 import type { CombatSystem } from "./combat-system.js";
 import type { TaskLifecycle } from "./task-lifecycle.js";
-import { isReplaceableBlockName } from "./block-classification.js";
+import {
+  isProtectedExcavationBlockName,
+  isReplaceableBlockName
+} from "./block-classification.js";
 export { isProtectedExcavationBlockName } from "./block-classification.js";
 import { rewindProjectForInventoryLoss } from "./recovery-system.js";
 import type {
@@ -42,6 +45,9 @@ import type { TelemetrySystem } from "./telemetry-system.js";
 interface SurveyState {
   origin?: Position;
   nextWaypoint?: number;
+  candidate?: Position;
+  preparedBlocks?: number;
+  rejectedCandidates?: string[];
 }
 
 interface AcquireState {
@@ -255,60 +261,78 @@ export class ProjectSystem {
   ): Promise<void> {
     const state = step.state as SurveyState;
     state.origin ??= floorPosition(this.bot.entity.position);
-    state.nextWaypoint ??= 0;
+    state.preparedBlocks ??= 0;
+    state.rejectedCandidates ??= [];
+    const maxPreparation =
+      spec.maxSitePreparationBlocks ??
+      spec.width * spec.depth * spec.clearanceHeight;
 
-    const anchor = this.evaluateCurrentSite(
-      spec.width,
-      spec.depth,
-      spec.clearanceHeight
-    );
-    if (anchor) {
-      project.anchor = anchor;
-      this.finishStep(project, `Selected build site at ${anchor.x}, ${anchor.y}, ${anchor.z}`);
-      return;
-    }
-
-    if (state.nextWaypoint >= spec.maxWaypoints) {
-      this.blockProject(project, `No suitable ${spec.width}x${spec.depth} site found`);
-      return;
-    }
-
-    const offset = spiralOffset(state.nextWaypoint);
-    state.nextWaypoint += 1;
-    this.memory.saveProject(project);
-    const target = {
-      x: Math.round(state.origin.x + offset.x * spec.waypointSpacing),
-      y: Math.round(this.bot.entity.position.y),
-      z: Math.round(state.origin.z + offset.z * spec.waypointSpacing)
-    };
-    const result = await this.movement.reachSurfaceArea(target, 4);
-    if (result.status === "blocked") {
-      console.warn(`[project] Site survey movement failed: ${result.detail}`);
-    }
-  }
-
-  private evaluateCurrentSite(
-    width: number,
-    depth: number,
-    clearanceHeight: number
-  ): Position | undefined {
-    const centerX = Math.floor(this.bot.entity.position.x);
-    const centerZ = Math.floor(this.bot.entity.position.z);
-    const feetY = Math.floor(this.bot.entity.position.y);
-    const minX = centerX - Math.floor(width / 2);
-    const minZ = centerZ - Math.floor(depth / 2);
-
-    for (let dx = 0; dx < width; dx += 1) {
-      for (let dz = 0; dz < depth; dz += 1) {
-        const ground = this.perception.blockAt(new Vec3(minX + dx, feetY - 1, minZ + dz));
-        if (!isSolid(ground?.name, ground?.boundingBox)) return undefined;
-        for (let dy = 0; dy < clearanceHeight; dy += 1) {
-          const block = this.perception.blockAt(new Vec3(minX + dx, feetY + dy, minZ + dz));
-          if (!block || !isReplaceableBlockName(block.name)) return undefined;
-        }
+    if (!state.candidate) {
+      const selected = selectBuildSiteCandidate({
+        center: floorPosition(this.bot.entity.position),
+        width: spec.width,
+        depth: spec.depth,
+        clearanceHeight: spec.clearanceHeight,
+        searchRadius:
+          spec.searchRadius ?? Math.max(spec.width, spec.depth) + 3,
+        maxObstructions: maxPreparation,
+        rejected: new Set(state.rejectedCandidates),
+        blockAt: (position) => this.perception.blockAt(new Vec3(
+          position.x,
+          position.y,
+          position.z
+        )),
+        canMine: (position) => this.mining.canMine(position)
+      });
+      if (!selected) {
+        this.blockProject(
+          project,
+          `No safe preparable ${spec.width}x${spec.depth} site is loaded nearby`
+        );
+        return;
       }
+      state.candidate = selected.anchor;
+      state.preparedBlocks = 0;
+      this.memory.saveProject(project);
+      this.report(
+        "working",
+        `Preparing a nearby ${spec.width}x${spec.depth} build site`,
+        `${selected.obstructions} blocks need clearing; no survey roaming`
+      );
     }
-    return { x: minX, y: feetY, z: minZ };
+
+    const result = await this.mining.prepareBuildSite({
+      anchor: state.candidate,
+      width: spec.width,
+      depth: spec.depth,
+      clearanceHeight: spec.clearanceHeight,
+      maxExcavations: Math.max(0, maxPreparation - state.preparedBlocks)
+    });
+    if (result.status === "blocked") {
+      state.rejectedCandidates.push(positionKey(state.candidate));
+      state.candidate = undefined;
+      state.preparedBlocks = 0;
+      this.memory.saveProject(project);
+      this.report("waiting", "Rejected unsafe build site", result.detail);
+      return;
+    }
+    if (result.status === "progress") {
+      state.preparedBlocks += result.excavated;
+      this.memory.saveProject(project);
+      this.report(
+        "working",
+        "Clearing the selected build site",
+        `${state.preparedBlocks}/${maxPreparation} cleared; ${result.remaining} visible obstructions remain`
+      );
+      return;
+    }
+
+    project.anchor = state.candidate;
+    this.finishStep(
+      project,
+      `Prepared build site at ${state.candidate.x}, ${state.candidate.y}, ${state.candidate.z} ` +
+        `after clearing ${state.preparedBlocks} blocks`
+    );
   }
 
   private async executeAcquire(
@@ -1996,6 +2020,88 @@ export function foodAnimalPriority(name: string): number {
     default:
       return 0;
   }
+}
+
+export interface BuildSiteCandidate {
+  anchor: Position;
+  obstructions: number;
+  score: number;
+}
+
+export function selectBuildSiteCandidate(options: {
+  center: Position;
+  width: number;
+  depth: number;
+  clearanceHeight: number;
+  searchRadius: number;
+  maxObstructions: number;
+  rejected?: Set<string>;
+  blockAt: (position: Position) =>
+    | { name: string; boundingBox?: string }
+    | null
+    | undefined;
+  canMine: (position: Position) => boolean;
+}): BuildSiteCandidate | undefined {
+  let best: BuildSiteCandidate | undefined;
+  for (let centerDx = -options.searchRadius; centerDx <= options.searchRadius; centerDx += 1) {
+    for (let centerDz = -options.searchRadius; centerDz <= options.searchRadius; centerDz += 1) {
+      const anchor = {
+        x: options.center.x + centerDx - Math.floor(options.width / 2),
+        y: options.center.y,
+        z: options.center.z + centerDz - Math.floor(options.depth / 2)
+      };
+      if (options.rejected?.has(positionKey(anchor))) continue;
+      let obstructions = 0;
+      let valid = true;
+      for (let dx = 0; dx < options.width && valid; dx += 1) {
+        for (let dz = 0; dz < options.depth && valid; dz += 1) {
+          const x = anchor.x + dx;
+          const z = anchor.z + dz;
+          const ground = options.blockAt({ x, y: anchor.y - 1, z });
+          if (!isSolid(ground?.name, ground?.boundingBox)) {
+            valid = false;
+            break;
+          }
+          for (let dy = 0; dy < options.clearanceHeight; dy += 1) {
+            const position = { x, y: anchor.y + dy, z };
+            const block = options.blockAt(position);
+            if (!block) {
+              valid = false;
+              break;
+            }
+            if (isReplaceableBlockName(block.name)) continue;
+            if (
+              block.name === "water" ||
+              block.name === "lava" ||
+              isProtectedExcavationBlockName(block.name) ||
+              !options.canMine(position)
+            ) {
+              valid = false;
+              break;
+            }
+            obstructions += 1;
+            if (obstructions > options.maxObstructions) {
+              valid = false;
+              break;
+            }
+          }
+        }
+      }
+      if (!valid) continue;
+      const distance = Math.hypot(centerDx, centerDz);
+      const candidate = {
+        anchor,
+        obstructions,
+        score: distance * 4 + obstructions
+      };
+      if (!best || candidate.score < best.score) best = candidate;
+    }
+  }
+  return best;
+}
+
+function positionKey(position: Position): string {
+  return `${position.x},${position.y},${position.z}`;
 }
 
 function safeFoodCount(inventory: InventorySystem): number {

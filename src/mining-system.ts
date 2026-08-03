@@ -23,9 +23,21 @@ export type MiningResult =
   | { status: "already_clear"; position: Position }
   | { status: "blocked"; position: Position; detail: string };
 
+export type SitePreparationResult =
+  | { status: "ready"; excavated: number; remaining: 0 }
+  | { status: "progress"; excavated: number; remaining: number }
+  | { status: "blocked"; excavated: number; detail: string };
+
 export interface MiningSystem {
   mineBlock(request: MineBlockRequest): Promise<MiningResult>;
   excavateAndEnter(target: Position, clearanceHeight?: number): Promise<number>;
+  prepareBuildSite(request: {
+    anchor: Position;
+    width: number;
+    depth: number;
+    clearanceHeight: number;
+    maxExcavations: number;
+  }): Promise<SitePreparationResult>;
   canMine(position: Position): boolean;
 }
 
@@ -144,10 +156,110 @@ export class MineflayerMiningSystem implements MiningSystem {
     return excavated;
   }
 
+  async prepareBuildSite(request: {
+    anchor: Position;
+    width: number;
+    depth: number;
+    clearanceHeight: number;
+    maxExcavations: number;
+  }): Promise<SitePreparationResult> {
+    const obstructions: Position[] = [];
+    for (let dx = 0; dx < request.width; dx += 1) {
+      for (let dz = 0; dz < request.depth; dz += 1) {
+        const x = request.anchor.x + dx;
+        const z = request.anchor.z + dz;
+        const ground = this.sensing.blockAt({ x, y: request.anchor.y - 1, z });
+        if (!isSolidGround(ground?.name, ground?.boundingBox)) {
+          return {
+            status: "blocked",
+            excavated: 0,
+            detail: `build floor is unsupported at ${x},${request.anchor.y - 1},${z}`
+          };
+        }
+        for (let dy = 0; dy < request.clearanceHeight; dy += 1) {
+          const position = { x, y: request.anchor.y + dy, z };
+          const block = this.sensing.blockAt(position);
+          if (!block) {
+            return {
+              status: "blocked",
+              excavated: 0,
+              detail: `build clearance is unloaded at ${position.x},${position.y},${position.z}`
+            };
+          }
+          if (isReplaceableBlockName(block.name)) continue;
+          if (
+            block.name === "water" ||
+            block.name === "lava" ||
+            isProtectedExcavationBlockName(block.name)
+          ) {
+            return {
+              status: "blocked",
+              excavated: 0,
+              detail: `build clearance contains protected or unsafe ${block.name}`
+            };
+          }
+          obstructions.push(position);
+        }
+      }
+    }
+
+    if (obstructions.length === 0) {
+      return { status: "ready", excavated: 0, remaining: 0 };
+    }
+    if (request.maxExcavations <= 0 || obstructions.length > request.maxExcavations) {
+      return {
+        status: "blocked",
+        excavated: 0,
+        detail:
+          `site needs ${obstructions.length} more excavations but ` +
+          `${request.maxExcavations} are allowed`
+      };
+    }
+
+    const target = obstructions.sort(
+      (left, right) => distanceSquared(left, this.bot.entity.position) -
+        distanceSquared(right, this.bot.entity.position)
+    )[0]!;
+    const result = await this.mineBlock({
+      position: target,
+      collectAfter: false
+    });
+    if (result.status === "blocked") {
+      return { status: "blocked", excavated: 0, detail: result.detail };
+    }
+    const excavated = result.status === "mined" ? 1 : 0;
+    return {
+      status: "progress",
+      excavated,
+      remaining: Math.max(0, obstructions.length - excavated)
+    };
+  }
+
   canMine(position: Position): boolean {
     const block = this.sensing.blockAt(position);
     return Boolean(block && this.bot.canDigBlock(block));
   }
+}
+
+function isSolidGround(
+  name: string | undefined,
+  boundingBox: string | undefined
+): boolean {
+  return Boolean(
+    name &&
+      boundingBox === "block" &&
+      name !== "water" &&
+      name !== "lava" &&
+      !isReplaceableBlockName(name)
+  );
+}
+
+function distanceSquared(left: Position, right: Position): number {
+  return (
+    (left.x - right.x) ** 2 +
+    (left.y - right.y) ** 2 +
+    (left.z - right.z) ** 2
+  );
 }
 
 function lowestSufficientPickaxe(inventory: InventorySystem, blockName: string) {

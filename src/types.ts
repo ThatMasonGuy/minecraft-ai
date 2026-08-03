@@ -136,6 +136,8 @@ export type ProjectStepSpec =
       clearanceHeight: number;
       maxWaypoints: number;
       waypointSpacing: number;
+      searchRadius?: number;
+      maxSitePreparationBlocks?: number;
     }
   | {
       kind: "acquire_item";

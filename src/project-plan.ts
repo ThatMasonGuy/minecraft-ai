@@ -53,7 +53,9 @@ const stepSpecSchema = z.discriminatedUnion("kind", [
     depth: z.number().int().min(3).max(15),
     clearanceHeight: z.number().int().min(2).max(8),
     maxWaypoints: z.number().int().min(1).max(256),
-    waypointSpacing: z.number().int().min(3).max(24)
+    waypointSpacing: z.number().int().min(3).max(24),
+    searchRadius: z.number().int().min(1).max(32).optional(),
+    maxSitePreparationBlocks: z.number().int().min(0).max(2_048).optional()
   }),
   z.object({
     kind: z.literal("acquire_item"),

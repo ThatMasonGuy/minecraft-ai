@@ -67,7 +67,9 @@ export function generatedStarterHouseProject(
           depth: 5,
           clearanceHeight: 4,
           maxWaypoints: 96,
-          waypointSpacing: 6
+          waypointSpacing: 6,
+          searchRadius: 8,
+          maxSitePreparationBlocks: 100
         }
       },
       {
@@ -198,7 +200,9 @@ export function generatedMiningProgressionProject(
             depth: 5,
             clearanceHeight: 4,
             maxWaypoints: 96,
-            waypointSpacing: 6
+            waypointSpacing: 6,
+            searchRadius: 8,
+            maxSitePreparationBlocks: 100
           }
         }
       ];
