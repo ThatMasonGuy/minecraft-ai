@@ -34,7 +34,7 @@
     "socket.io": "^4.8.3",
     "vec3": "^0.1.10",
     "xstate": "^5.32.5",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
